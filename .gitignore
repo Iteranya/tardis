@@ -1,0 +1,13 @@
+/__pycache__
+/.venv
+venv
+.env
+*.db
+*.db-shm
+*.db-wal
+*.json
+*.exe
+*.log
+!default_config.json
+!default_pages.json
+!default_roles.json
