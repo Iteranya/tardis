@@ -1,6 +1,10 @@
 from typing import List, Optional, Dict
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from data import models, schemas
+from starlette import status
+from data import crud, models, schemas
+import secrets
+
 
 # --- USERS ---
 
@@ -49,3 +53,9 @@ def delete_role(db: Session, role_name: str) -> bool:
         db.commit()
         return True
     return False
+
+def get_user_by_api_key(db: Session, api_key: str) -> models.User:
+    """
+    Gets a user by their API key.
+    """
+    return db.query(models.User).filter(models.User.key == api_key).first()

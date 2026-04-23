@@ -1,5 +1,6 @@
 # file: services/users.py
 
+import secrets
 from typing import List, Dict
 import bcrypt
 from sqlalchemy.orm import Session
@@ -192,3 +193,63 @@ class UserService:
         permissions = all_roles_with_permissions.get(user_role_name, [])
         
         return permissions
+    
+    def generate_api_key() -> str:
+        """
+        Generates a secure random API key.
+        Returns a URL-safe base64 encoded string.
+        """
+        return secrets.token_urlsafe(32)  # 32 bytes = 43 characters
+
+    def verify_api_key(self, api_key: str) -> models.User:
+        """
+        Verifies an API key and returns the associated user.
+        Raises 401 if key is invalid or user is disabled.
+        """
+        user = crud.get_user_by_api_key(self.db, api_key=api_key)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid API key"
+            )
+
+        if user.disabled:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account is disabled"
+            )
+
+        return user
+
+    def regenerate_api_key(self, username: str) -> models.User:
+        """
+        Generates a new API key for the user.
+        Returns the user with the new key.
+        """
+        user = self.get_user_by_username(username)
+
+        new_key = self.generate_api_key()
+        user.key = new_key
+
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user
+    
+    def regenerate_api_key(self, username: str) -> models.User:
+        """
+        Generates a new API key for the user.
+        Returns the user with the new key.
+        """
+        user = self.get_user_by_username(username)
+
+        new_key = self.generate_api_key()
+        user.key = new_key
+
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user

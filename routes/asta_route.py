@@ -19,6 +19,7 @@ router = APIRouter(tags=["Asta Markdown Editor"])
 # --- CONFIG ---
 ASTA_INDEX_PATH = "static/asta/index.html"
 RAW_INDEX_PATH = "static/aina-raw/index.html"
+WARDAYA_INDEX_PATH = "static/wardaya-editor/index.html"
 
 # --- HELPER ---
 def render_template(file_path: str, context: dict = None):

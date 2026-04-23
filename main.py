@@ -36,6 +36,7 @@ from routes import (
     public_route,
     roles_route,
     config_route,
+    api_route,
     dashboard_route
 )
 
@@ -170,6 +171,7 @@ api_router.include_router(file_route.router, tags=["Files"])
 api_router.include_router(roles_route.router, tags=["Roles"])
 api_router.include_router(pages_route.router, tags=["Pages"]) 
 api_router.include_router(auth_route.router, tags=["Authentication"]) 
+api_router.include_router(api_route.router, tags=["Api"])
 api_router.include_router(public_route.router, tags=["Public"])   
 
 app.include_router(api_router)

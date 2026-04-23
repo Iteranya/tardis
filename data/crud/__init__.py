@@ -18,7 +18,8 @@ from .pages import (
     get_pages_by_author,
     create_page,
     update_page,
-    delete_page
+    delete_page,
+    list_pages_by_type
 )
 
 from .collections import (

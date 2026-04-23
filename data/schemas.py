@@ -242,10 +242,11 @@ class UserBase(BaseModel):
     pfp_url: Optional[str] = None
     role: str = "viewer"
     disabled: bool = False
+    key: Optional[str] = None  # ← Added API key field!
     settings: Optional[dict] = None
     custom: Optional[dict] = None
-    
-    @field_validator('display_name', 'role', mode='before')
+
+    @field_validator('display_name', 'role', 'key', mode='before')  # ← Added 'key' here!
     @classmethod
     def bleach_user_text_fields(cls, v): return sanitize_text(v)
 
@@ -256,7 +257,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     username: str
     hashed_password: str
-    
+
     @field_validator('username', mode='before')
     @classmethod
     def validate_username_slug(cls, v): return validate_slug_format(v)
@@ -266,24 +267,27 @@ class UserUpdate(UserBase):
     pfp_url: Optional[str] = None
     role: Optional[str] = None
     disabled: Optional[bool] = None
+    key: Optional[str] = None  # ← Added here too!
     settings: Optional[dict] = None
     custom: Optional[dict] = None
 
 class MeUpdate(UserBase):
     display_name: Optional[str] = None
     pfp_url: Optional[str] = None
+    key: Optional[str] = None  # ← Users can update their own key too!
     settings: Optional[dict] = None
     custom: Optional[dict] = None
 
 class User(UserBase):
     username: str
-    class Config: 
+    class Config:
         from_attributes = True
 
 class CurrentUser(BaseModel):
     username: str
     role: str
     display_name: Optional[str] = None
+    key: Optional[str] = None  # ← Include key in current user response!
     exp: int
 
 class UserCreateWithPassword(UserBase):
@@ -291,9 +295,12 @@ class UserCreateWithPassword(UserBase):
     password: str
     role: str
     display_name: str
+    key: Optional[str] = None  # ← Optional key during user creation!
+
     @field_validator('username', mode='before')
     @classmethod
     def validate_username_slug(cls, v): return validate_slug_format(v)
+
 
 # --- Setting Schemas ---
 

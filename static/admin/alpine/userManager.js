@@ -1,24 +1,26 @@
 export default () =>  ({
         view: 'users', // 'users' | 'roles'
         isLoading: false,
-        
+
         // Data
         users: [],
         roles: [], // Array of objects
         // Selection State (for Roles Split Pane)
-        selectedRole: null, 
+        selectedRole: null,
 
         // Modals
         userModalOpen: false,
         passwordModalOpen: false,
         deleteModalOpen: false,
         isEditingUser: false,
+        keyModalOpen: false, // ← New modal for API key management
 
         // Collections
         userCollection: { username: '', display_name: '', role: 'viewer', disabled: false, password: '' },
         passwordCollection: { username: '', new_password: '' },
         roleCollection: { role_name: '', permissions: [] },
         deleteTarget: { type: '', id: '' },
+        keyTarget: { username: '', hasKey: false, keyValue: null }, // ← New for key management
 
         // Static Data: Permission Categories
         permCategories: [
@@ -212,6 +214,59 @@ export default () =>  ({
 
                 this.refresh();
             } catch(e) { Alpine.store('notifications').error('Save Failed', e); }
+        },
+
+        // --- API KEY LOGIC ---
+
+        openKeyModal(user) {
+            this.keyTarget = {
+                username: user.username,
+                hasKey: user.key !== null && user.key !== undefined,
+                keyValue: null // We'll fetch this when generating
+            };
+            this.keyModalOpen = true;
+        },
+
+        async generateKey() {
+            try {
+                // Generate new key for the user
+                const response = await this.$api._request('POST', `/users/${this.keyTarget.username}/key`);
+
+                // Show the new key to the admin
+                this.keyTarget.hasKey = true;
+                this.keyTarget.keyValue = response.key;
+
+                // Refresh user list to update UI
+                await this.refresh();
+
+                Alpine.store('notifications').success('API Key Generated', `New key created for ${this.keyTarget.username}`);
+            } catch(e) {
+                Alpine.store('notifications').error('Generate Key Failed', e);
+            }
+        },
+
+        async revokeKey() {
+            if(!confirm(`Are you sure you want to revoke the API key for ${this.keyTarget.username}?`)) return;
+
+            try {
+                await this.$api._request('DELETE', `/users/${this.keyTarget.username}/key`);
+
+                this.keyTarget.hasKey = false;
+                this.keyTarget.keyValue = null;
+
+                await this.refresh();
+
+                Alpine.store('notifications').success('API Key Revoked', `Key removed for ${this.keyTarget.username}`);
+            } catch(e) {
+                Alpine.store('notifications').error('Revoke Key Failed', e);
+            }
+        },
+
+        copyKeyToClipboard() {
+            if(this.keyTarget.keyValue) {
+                navigator.clipboard.writeText(this.keyTarget.keyValue);
+                Alpine.store('notifications').success('Copied!', 'API key copied to clipboard');
+            }
         },
 
         // --- SHARED DELETE LOGIC ---

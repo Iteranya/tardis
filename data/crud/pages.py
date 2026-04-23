@@ -12,6 +12,9 @@ def get_page(db: Session, slug: str) -> Optional[models.Page]:
 def list_pages(db: Session, skip: int = 0, limit: int = 100) -> List[models.Page]:
     return db.query(models.Page).order_by(models.Page.created.desc()).offset(skip).limit(limit).all()
 
+def list_pages_by_type(db: Session, type: str, skip: int = 0, limit: int = 100) -> List[models.Page]:
+    return db.query(models.Page).filter(models.Page.type == type).order_by(models.Page.created.desc()).offset(skip).limit(limit).all()
+
 def search_pages(db: Session, query_str: str, skip: int = 0, limit: int = 100) -> List[models.Page]:
     query = db.query(models.Page)
     query = apply_label_filters(query, models.Page, query_str)

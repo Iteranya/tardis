@@ -116,8 +116,10 @@ class User(Base):
     display_name = Column(String)
     pfp_url = Column(String)
     disabled = Column(Boolean, nullable=False, default=False)
+    key = Column(String, index=True)  # ← Added API key column with index!
     settings = Column(JSON)
     custom = Column(JSON)
+
 
 
 class Setting(Base):
