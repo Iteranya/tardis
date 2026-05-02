@@ -2,13 +2,15 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 
 
-class PageCreate(BaseModel):
-    """Schema for creating a new Page."""
+class ArticleCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     slug: str = Field(..., min_length=1, max_length=200, pattern=r"^[a-z0-9\-]+$")
     desc: Optional[str] = Field(None, max_length=500)
-    content_id: Optional[str] = None
+    author: Optional[str] = Field(None, max_length=100)
+    draft: Optional[str] = None
+    release: Optional[str] = None
     thumb: Optional[str] = None
+    gallery: Optional[List[str]] = None
     labels: Optional[List[str]] = None
     tags: Optional[List[str]] = None
     enabled: bool = False
@@ -30,13 +32,15 @@ class PageCreate(BaseModel):
         return v
 
 
-class PageUpdate(BaseModel):
-    """Schema for updating a Page (all fields optional)."""
+class ArticleUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     slug: Optional[str] = Field(None, min_length=1, max_length=200, pattern=r"^[a-z0-9\-]+$")
     desc: Optional[str] = Field(None, max_length=500)
-    content_id: Optional[str] = None
+    author: Optional[str] = Field(None, max_length=100)
+    draft: Optional[str] = None
+    release: Optional[str] = None
     thumb: Optional[str] = None
+    gallery: Optional[List[str]] = None
     labels: Optional[List[str]] = None
     tags: Optional[List[str]] = None
     enabled: Optional[bool] = None
@@ -58,14 +62,16 @@ class PageUpdate(BaseModel):
         return v
 
 
-class PageResponse(BaseModel):
-    """Schema for Page data returned by the API."""
+class ArticleResponse(BaseModel):
     id: str
     title: str
     slug: str
     desc: Optional[str] = None
-    content_id: Optional[str] = None
+    author: Optional[str] = None
+    draft: Optional[str] = None
+    release: Optional[str] = None
     thumb: Optional[str] = None
+    gallery: Optional[List[str]] = None
     labels: Optional[List[str]] = None
     tags: Optional[List[str]] = None
     enabled: bool = False
@@ -78,21 +84,20 @@ class PageResponse(BaseModel):
         from_attributes = True
 
 
-class PageListResponse(BaseModel):
-    """Paginated list of Pages."""
-    items: List[PageResponse]
+class ArticleListResponse(BaseModel):
+    items: List[ArticleResponse]
     page: int
     per_page: int
     total_items: int
     total_pages: int
 
 
-class PageSummary(BaseModel):
-    """Lightweight version for listing views."""
+class ArticleSummary(BaseModel):
     id: str
     title: str
     slug: str
     desc: Optional[str] = None
+    author: Optional[str] = None
     thumb: Optional[str] = None
     labels: Optional[List[str]] = None
     tags: Optional[List[str]] = None
@@ -105,9 +110,8 @@ class PageSummary(BaseModel):
         from_attributes = True
 
 
-class PageSummaryListResponse(BaseModel):
-    """Paginated list of page summaries."""
-    items: List[PageSummary]
+class ArticleSummaryListResponse(BaseModel):
+    items: List[ArticleSummary]
     page: int
     per_page: int
     total_items: int

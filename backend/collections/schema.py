@@ -8,8 +8,6 @@ class Collection:
     slug: str                                    # Text, required, unique URL path
     desc: Optional[str] = None                   # Text, optional description
 
-    # --- Content ---
-
     # --- Classification ---
     labels: Optional[List[str]] = None           # Json or select (if predefined)
     tags: Optional[List[str]] = None             # Json or select (if predefined)
