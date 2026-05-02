@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anita-CMS — {% block title %}Auth{% endblock %}</title>
+
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#fdf2f8',
+                            100: '#fce7f3',
+                            200: '#fbcfe8',
+                            300: '#f9a8d4',
+                            400: '#f472b6',
+                            500: '#ec4899',
+                            600: '#db2777',
+                            700: '#be185d',
+                            800: '#9d174d',
+                            900: '#831843',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.0/dist/cdn.min.js"></script>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+
+    <!-- Auth CSS -->
+    <link rel="stylesheet" href="/static/css/auth.css">
+    {% block head %}{% endblock %}
+</head>
+<body class="h-full">
+    <div class="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div class="w-full max-w-md space-y-8">
+            <!-- Logo -->
+            <div class="text-center">
+                <img class="mx-auto h-16 w-auto" src="/static/images/logo-icon.svg" alt="Anita-CMS">
+                <h1 class="mt-4 text-3xl font-bold tracking-tight text-gray-900">Anita-CMS</h1>
+                <p class="mt-2 text-sm text-gray-500">
+                    {% block subtitle %}Content Management System{% endblock %}
+                </p>
+            </div>
+
+            <!-- Auth Card -->
+            <div class="bg-white py-8 px-6 shadow-xl rounded-xl sm:px-10">
+                {% block content %}{% endblock %}
+            </div>
+
+            <!-- Footer -->
+            <p class="text-center text-xs text-gray-400">
+                © 2026 Anita-CMS. Made with 💖 by Aina-chan.
+            </p>
+        </div>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,286 @@
+{% extends "auth/index.html" %}
+
+{% block title %}Setup{% endblock %}
+{% block subtitle %}Let's get Anita-CMS connected!{% endblock %}
+
+{% block content %}
+<div x-data="setupForm()">
+    <!-- Step indicator -->
+    <div class="mb-6">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition"
+                     :class="step >= 1 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'">
+                    1
+                </div>
+                <span class="ml-2 text-sm transition" :class="step >= 1 ? 'text-primary-600 font-medium' : 'text-gray-500'">
+                    Connect
+                </span>
+            </div>
+            <div class="flex-1 mx-4 h-px transition" :class="step >= 2 ? 'bg-primary-600' : 'bg-gray-200'"></div>
+            <div class="flex items-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition"
+                     :class="step >= 2 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'">
+                    2
+                </div>
+                <span class="ml-2 text-sm transition" :class="step >= 2 ? 'text-primary-600 font-medium' : 'text-gray-500'">
+                    Account
+                </span>
+            </div>
+            <div class="flex-1 mx-4 h-px transition" :class="step >= 3 ? 'bg-primary-600' : 'bg-gray-200'"></div>
+            <div class="flex items-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition"
+                     :class="step >= 3 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'">
+                    3
+                </div>
+                <span class="ml-2 text-sm transition" :class="step >= 3 ? 'text-primary-600 font-medium' : 'text-gray-500'">
+                    Site
+                </span>
+            </div>
+            <div class="flex-1 mx-4 h-px transition" :class="step >= 4 ? 'bg-primary-600' : 'bg-gray-200'"></div>
+            <div class="flex items-center">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition"
+                     :class="step >= 4 ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'">
+                    4
+                </div>
+                <span class="ml-2 text-sm transition" :class="step >= 4 ? 'text-primary-600 font-medium' : 'text-gray-500'">
+                    Done!
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Message -->
+    <div x-show="error" x-cloak
+         class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-start gap-2">
+        <svg class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span x-text="error"></span>
+    </div>
+
+    <!-- Success Message -->
+    <div x-show="success" x-cloak
+         class="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm flex items-start gap-2">
+        <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span x-text="success"></span>
+    </div>
+
+    <!-- ===== STEP 1: PocketBase Connection ===== -->
+    <div x-show="step === 1" x-cloak>
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Connect to PocketBase</h2>
+        <p class="text-sm text-gray-500 mb-6">
+            Enter the URL of your PocketBase server. Aina-chan will test the connection before proceeding.
+        </p>
+
+        <div class="space-y-6">
+            <div>
+                <label for="pb_url" class="block text-sm font-medium text-gray-700">
+                    PocketBase URL
+                </label>
+                <div class="mt-1 relative">
+                    <input id="pb_url"
+                           type="url"
+                           x-model="pocketbase.url"
+                           @input="connectionTested = false"
+                           placeholder="http://localhost:8090"
+                           required
+                           class="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition pl-10"
+                           :class="{ 'border-green-500 ring-1 ring-green-500': connectionTested && connectionOk,
+                                    'border-red-300': connectionTested && !connectionOk }">
+                    <!-- URL icon -->
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                    </div>
+                    <!-- Status icon -->
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                        <svg x-show="connectionTested && connectionOk"
+                             class="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <svg x-show="connectionTested && !connectionOk"
+                             class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        <svg x-show="testing"
+                             class="h-5 w-5 text-primary-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                </div>
+                <p x-show="connectionTested && connectionOk"
+                   class="mt-1 text-xs text-green-600">✅ Connected! PocketBase is reachable.</p>
+                <p x-show="connectionTested && !connectionOk"
+                   class="mt-1 text-xs text-red-600">❌ Could not connect. Check the URL and make sure PocketBase is running.</p>
+            </div>
+
+            <!-- Connection details (shown after success) -->
+            <div x-show="connectionTested && connectionOk"
+                 x-transition
+                 class="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div class="flex items-center gap-2 text-sm text-green-800">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Aina-chan found PocketBase v<span x-text="pbVersion"></span>!</span>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button type="button"
+                        @click="testConnection()"
+                        :disabled="!pocketbase.url || testing"
+                        class="w-full rounded-lg border-2 border-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-600 hover:bg-primary-50 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                        x-html="testing ? '⏳ Testing...' : '🔌 Test Connection'">
+                </button>
+            </div>
+
+            <button type="button"
+                    @click="step = 2"
+                    :disabled="!connectionTested || !connectionOk"
+                    class="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                Next →
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== STEP 2: Admin Account ===== -->
+    <div x-show="step === 2" x-cloak>
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Create Superadmin Account</h2>
+        <p class="text-sm text-gray-500 mb-6">
+            This will be the main administrator for Anita-CMS.
+        </p>
+
+        <form class="space-y-6" @submit.prevent="step = 3">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Email</label>
+                <input type="email" x-model="admin.email" required
+                       class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition"
+                       placeholder="admin@example.com">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Password</label>
+                <input type="password" x-model="admin.password" required minlength="8"
+                       class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition"
+                       placeholder="At least 8 characters">
+                <p class="mt-1 text-xs text-gray-400">Minimum 8 characters</p>
+            </div>
+            <div class="flex gap-3">
+                <button type="button" @click="step = 1"
+                        class="w-1/3 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                    ← Back
+                </button>
+                <button type="submit"
+                        class="w-2/3 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-500 transition">
+                    Next →
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- ===== STEP 3: Site Info ===== -->
+    <div x-show="step === 3" x-cloak>
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">Site Information</h2>
+        <p class="text-sm text-gray-500 mb-6">
+            Tell us about your website!
+        </p>
+
+        <form class="space-y-6" @submit.prevent="completeSetup">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Site Name</label>
+                <input type="text" x-model="site.name" required
+                       class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition"
+                       placeholder="My Awesome Site">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Site URL</label>
+                <input type="url" x-model="site.url" required
+                       class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition"
+                       placeholder="https://example.com">
+            </div>
+            <div class="flex gap-3">
+                <button type="button" @click="step = 2"
+                        class="w-1/3 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                    ← Back
+                </button>
+                <button type="submit"
+                        class="w-2/3 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-500 transition">
+                    Initialize System →
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- ===== STEP 4: Complete! ===== -->
+    <div x-show="step === 4" x-cloak>
+        <div class="text-center py-4">
+            <div class="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center"
+                 x-show="!loading">
+                <svg class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <div class="w-16 h-16 mx-auto bg-primary-100 rounded-full flex items-center justify-center"
+                 x-show="loading">
+                <svg class="w-8 h-8 text-primary-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+
+            <h2 class="mt-4 text-lg font-semibold text-gray-900" x-show="!loading && !setupError">
+                All Set! 🎉
+            </h2>
+            <h2 class="mt-4 text-lg font-semibold text-red-600" x-show="setupError" x-text="setupError">
+            </h2>
+            <p class="mt-2 text-sm text-gray-500" x-show="!loading && !setupError">
+                Anita-CMS is initialized and ready to go!
+            </p>
+            <p class="mt-2 text-sm text-gray-500" x-show="loading">
+                Aina-chan is setting everything up... This may take a moment! ⏳
+            </p>
+
+            <div x-show="!loading && !setupError" class="mt-6 space-y-3">
+                <div class="p-3 bg-gray-50 rounded-lg text-left text-sm space-y-2">
+                    <div class="flex items-center gap-2 text-green-600">
+                        <span>✅</span>
+                        <span>PocketBase connected</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-green-600">
+                        <span>✅</span>
+                        <span>Superadmin created</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-green-600">
+                        <span>✅</span>
+                        <span>Collections initialized</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-green-600">
+                        <span>✅</span>
+                        <span>Site created</span>
+                    </div>
+                </div>
+
+                <button @click="goToDashboard()"
+                        class="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-500 transition">
+                    🚀 Go to Dashboard
+                </button>
+            </div>
+
+            <button x-show="setupError && !loading"
+                    @click="step = 1"
+                    class="mt-4 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                ← Start Over
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/frontend/auth/setup/setup.js"></script>
+{% endblock %}
