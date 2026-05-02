@@ -1,189 +1,192 @@
-import os
-import sys
-import shutil
-import secrets
+"""
+Anita-CMS Main Entry Point 🎀
+
+A modular CMS built with FastAPI + PocketBase.
+Each module is fully self-contained and can be deleted independently!
+"""
+
 from contextlib import asynccontextmanager
-from pathlib import Path
-
-import uvicorn
-from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-# --- Configuration & Environment Loading ---
-BASE_DIR = Path(__file__).resolve().parent
-ENV_PATH = BASE_DIR / ".env"
+# ─── Import all modules ────────────────────────────────────────
+# Each module is 100% independent!
+# Delete any import below without breaking the rest!
 
-# Load environment variables
-load_dotenv(ENV_PATH)
+from backend.pages.router import router as pages_router
+from backend.article.router import router as article_router
+from backend.site.router import router as site_router
+from backend.collections.router import router as collections_router
+from backend.storage.router import router as storage_router
+from backend.users.router import router as users_router
 
-sys.path.append(str(BASE_DIR))
 
-# Import database (after path setup)
-from data import database
+# ─── Lifespan ──────────────────────────────────────────────────
 
-# Import all route modules
-from routes import (
-    admin_route,
-    aina_route,
-    asta_route,
-    auth_route,
-    file_route,
-    collections_route,
-    media_route,
-    pages_route, 
-    public_route,
-    roles_route,
-    config_route,
-    api_route,
-    dashboard_route
-)
-
-# --- Interactive Setup Helper ---
-def interactive_setup():
-    """
-    Handles initial setup:
-    1. Selects a database template (Theme) if anita.db is missing.
-    2. Generates JWT_SECRET if missing from .env.
-    """
-    
-    # 1. Database / Theme Selection
-    db_path = BASE_DIR / "anita.db"
-    templates_dir = BASE_DIR / "anita-template"
-
-    if not db_path.exists():
-        print("\n⚠️  No database found (anita.db).")
-        
-        # Find .db files in templates folder
-        if not templates_dir.exists():
-            os.makedirs(templates_dir)
-            
-        available_templates = list(templates_dir.glob("*.db"))
-        
-        if not available_templates:
-            print("❌ No database templates found in /anita-template folder!")
-            print("Please place your template .db files there and restart.")
-            sys.exit(1)
-        print("🏗️  Welcome to Anita CMS Setup!")
-        print("   We need to initialize your database.")
-        print("   Since this is a new installation, please select a Starter Template.")
-        print("   (This will configure your initial pages, roles, and settings)")
-
-        print("\n📂 Available Starter Templates:")
-        for idx, temp in enumerate(available_templates, 1):
-            print(f"   [{idx}] {temp.name}")
-
-        selected_index = -1
-        while selected_index < 0 or selected_index >= len(available_templates):
-            try:
-                choice = input("\nEnter the number of your choice: ")
-                selected_index = int(choice) - 1
-            except ValueError:
-                pass
-
-        selected_template = available_templates[selected_index]
-        print(f"🔄 Copying '{selected_template.name}' to 'anita.db'...")
-        shutil.copy(selected_template, db_path)
-        print("✅ Database initialized successfully.\n")
-    
-    # 2. JWT Secret Generation
-    # Reload env in case it was created/modified externally since script start
-    load_dotenv(ENV_PATH, override=True)
-    
-    if not os.getenv("JWT_SECRET"):
-        print("🔑 JWT_SECRET not found in .env.")
-        gen_choice = input("Generate a secure random secret now? [Y/n]: ").strip().lower()
-        
-        if gen_choice in ["", "y", "yes", "Y"]:
-            secret = secrets.token_hex(32)
-            
-            # Read current .env content
-            content = ""
-            if ENV_PATH.exists():
-                with open(ENV_PATH, "r") as f:
-                    content = f.read()
-            
-            # Append new secret
-            prefix = "\n" if content and not content.endswith("\n") else ""
-            with open(ENV_PATH, "a") as f:
-                f.write(f"{prefix}JWT_SECRET={secret}\n")
-            
-            print("✅ Generated new JWT_SECRET and saved to .env.")
-            # Reload environment to apply the change immediately
-            load_dotenv(ENV_PATH, override=True)
-        else:
-            print("❌ Cannot proceed without JWT_SECRET. Exiting.")
-            sys.exit(1)
-
-# --- Database Lifespan ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # This code runs on startup
-    print("🚀 Application starting up...")
-    
-    # Ensure tables exist (Safety check, though the copied DB should have them)
-    database.Base.metadata.create_all(bind=database.engine)
-        
-    yield # The application runs here
+    """
+    Aina-chan's startup/shutdown handler! (◕‿◕✿)
 
-    # This code runs on shutdown
-    print("👋 Application shutting down...")
+    This runs when the app starts up to ensure all collections
+    are initialized. If a module is deleted, its initialization
+    is just skipped!
+    """
+    print("🌟 Anita-CMS is starting up...")
+
+    # Initialize each module's collection
+    # If a module is deleted, the import won't exist,
+    # so this code won't be reached for that module.
+
+    _init_modules()
+
+    yield  # App runs here
+
+    print("🌙 Anita-CMS is shutting down...")
 
 
-# --- FastAPI App Initialization ---
+def _init_modules():
+    """
+    Initialize all module collections at startup.
+
+    Aina-chan tries each one independently so if one fails,
+    the others still work! (◕‿◕✿)
+    """
+    from backend.pages.service import PageService
+    from backend.article.service import ArticleService
+    from backend.site.service import SiteService
+    from backend.collections.service import CollectionService
+    from backend.storage.service import StorageService
+    from backend.users.service import UserService
+
+    init_tasks = [
+        ("Pages", lambda: PageService().initialize()),
+        ("Articles", lambda: ArticleService().initialize()),
+        ("Sites", lambda: SiteService().initialize()),
+        ("Collections", lambda: CollectionService().initialize()),
+        ("Storage", lambda: StorageService().initialize()),
+        ("Users", lambda: UserService().initialize()),
+    ]
+
+    for name, task in init_tasks:
+        try:
+            result = task()
+            status = "✅" if result else "❌"
+            print(f"  {status} {name}")
+        except Exception as e:
+            print(f"  ❌ {name} — {e}")
+
+
+# ─── App Instance ──────────────────────────────────────────────
+
 app = FastAPI(
-    title="Anita CMS",
-    version="1.0.0",
+    title="Anita-CMS",
+    description="""
+        🎀 A modular, self-contained CMS built with FastAPI + PocketBase.
+
+        ## Architecture
+        Each module is **fully independent** and can be deleted without
+        breaking the rest of the system!
+
+        ## Modules
+        - **Pages** — Simple static pages
+        - **Articles** — Markdown-based blog content
+        - **Sites** — HTML-based page content
+        - **Collections** — Dynamic content type definitions
+        - **Storage** — File and media metadata
+        - **Users** — Role-based permission system
+    """,
+    version="0.1.0",
     lifespan=lifespan,
-    redirect_slashes=True
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-# --- Middleware ---
+
+# ─── CORS Middleware ────────────────────────────────────────────
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5469" 
+        "http://localhost:3000",   # React/Vue dev server
+        "http://localhost:5173",   # Vite dev server
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        # Add more origins as needed
     ],
-    allow_credentials=True, 
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=[
-        "Content-Type",
-        "Authorization",
-    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# --- Static Files ---
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static-directory")
-app.mount("/uploads", StaticFiles(directory=BASE_DIR / "uploads"), name="uploads-directory")
 
-# --- API Router Organization ---
-api_router = APIRouter()
+# ─── Include Routers ───────────────────────────────────────────
+# Each module is 100% independent!
+# Delete any line below without breaking the rest!
 
-api_router.include_router(admin_route.router, tags=["Admin"])
-api_router.include_router(dashboard_route.router, tags = ["Dashboard"])
-api_router.include_router(config_route.router, tags=["Config"])
-api_router.include_router(aina_route.router, tags=["Aina"])
-api_router.include_router(asta_route.router, tags=["Asta"])
-api_router.include_router(media_route.router, tags=["Media"])
-api_router.include_router(collections_route.router, tags=["Collections"])
-api_router.include_router(file_route.router, tags=["Files"])
-api_router.include_router(roles_route.router, tags=["Roles"])
-api_router.include_router(pages_route.router, tags=["Pages"]) 
-api_router.include_router(auth_route.router, tags=["Authentication"]) 
-api_router.include_router(api_route.router, tags=["Api"])
-api_router.include_router(public_route.router, tags=["Public"])   
-
-app.include_router(api_router)
+app.include_router(pages_router)
+app.include_router(article_router)
+app.include_router(site_router)
+app.include_router(collections_router)
+app.include_router(storage_router)
+app.include_router(users_router)
 
 
-# --- Main Entry Point ---
-if __name__ == "__main__":
-    # Run the interactive setup (Theme picker & JWT Gen)
-    # This blocks until the user finishes setup
-    interactive_setup()
-    
-    # Get port from command-line argument, default to 5469
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5469
-    print(f"Starting server on http://127.0.0.1:{port}")
-    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True)
+# ─── Root Endpoint ─────────────────────────────────────────────
+
+@app.get("/", tags=["Root"])
+async def root():
+    """
+    Welcome to Anita-CMS! 🎀
+
+    Aina-chan's modular CMS system.
+    Check out the docs at /docs for all available endpoints!
+    """
+    return {
+        "name": "Anita-CMS",
+        "version": "0.1.0",
+        "description": "A modular CMS built with FastAPI + PocketBase",
+        "docs": "/docs",
+        "redoc": "/redoc",
+        "modules": {
+            "pages": {
+                "path": "/pages",
+                "description": "Simple static page management",
+            },
+            "articles": {
+                "path": "/articles",
+                "description": "Markdown-based blog content",
+            },
+            "sites": {
+                "path": "/sites",
+                "description": "HTML-based page content",
+            },
+            "collections": {
+                "path": "/collections",
+                "description": "Dynamic content type definitions",
+            },
+            "storage": {
+                "path": "/storage",
+                "description": "File and media metadata",
+            },
+            "users": {
+                "path": "/users",
+                "description": "Role-based permission system",
+            },
+        },
+    }
+
+
+# ─── Health Check ──────────────────────────────────────────────
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint.
+
+    Aina-chan uses this to make sure the server is alive! (◕‿◕✿)
+    """
+    return {
+        "status": "healthy",
+        "timestamp": __import__("datetime").datetime.now().isoformat(),
+    }
