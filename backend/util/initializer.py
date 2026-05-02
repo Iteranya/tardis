@@ -1,8 +1,4 @@
-"""
-Anita-CMS Initializer 🚀
-"""
 import time
-
 from pocketbase import PocketBase
 from backend.util.secrets import SecretsManager
 from backend.util.auth import authenticate_admin
@@ -10,26 +6,23 @@ from backend.util.auth import authenticate_admin
 
 def initialize_all_modules():
     """
-    Initialize all module collections using a shared PocketBase connection.
-    Aina-chan authenticates ONCE, not per-manager! (★ω★)
-    """
-    from backend.pages.manager import PageManager
-    from backend.articles.manager import ArticleManager
-    from backend.sites.manager import SiteManager
-    from backend.storage.manager import StorageManager
-    from backend.users.manager import UserManager
+    Initialize all module collections with a single PocketBase connection.
 
-    # Get credentials once
+    Returns:
+        dict: Results per module with '✅' or error message.
+        Also sets secrets.json "initialized" = True if all succeeded.
+    """
     secrets = SecretsManager()
     pb_url = secrets.pocketbase_url
     email = secrets.admin_email
     password = secrets.admin_password
 
+    # Early exit if no credentials
     if not email or not password:
         print("  ❌ No credentials configured. Skipping initialization.")
         return {}
 
-    # Create ONE PocketBase client and authenticate ONCE
+    # Authenticate once
     client = PocketBase(pb_url)
     try:
         authenticate_admin(client, email, password)
@@ -38,57 +31,59 @@ def initialize_all_modules():
         print(f"  ❌ Authentication failed: {e}")
         return {}
 
-    is_authenticated = True
+    # Create managers with shared client and auth
+    from backend.pages.manager import PageManager
+    from backend.articles.manager import ArticleManager
+    from backend.sites.manager import SiteManager
+    from backend.storage.manager import StorageManager
+    from backend.users.manager import UserManager
 
-    # Create managers with the shared client
     managers = [
-        ("Pages", PageManager(pb_url=pb_url, admin_email=email, admin_password=password)),
-        ("Articles", ArticleManager(pb_url=pb_url, admin_email=email, admin_password=password)),
-        ("Sites", SiteManager(pb_url=pb_url, admin_email=email, admin_password=password)),
-        ("Storage", StorageManager(pb_url=pb_url, admin_email=email, admin_password=password)),
-        ("Users", UserManager(pb_url=pb_url, admin_email=email, admin_password=password)),
+        ("Pages", PageManager(pb_url, email, password)),
+        ("Articles", ArticleManager(pb_url, email, password)),
+        ("Sites", SiteManager(pb_url, email, password)),
+        ("Storage", StorageManager(pb_url, email, password)),
+        ("Users", UserManager(pb_url, email, password)),
     ]
 
-    # Share the authenticated client with all managers
-    for name, manager in managers:
-        manager.client = client
-        manager._is_authenticated = is_authenticated
+    # Inject the already-authenticated client
+    for _, mgr in managers:
+        mgr.client = client
+        mgr._is_authenticated = True
 
     results = {}
 
-    for name, manager in managers:
+    for name, mgr in managers:
         try:
             t0 = time.time()
-
-            if hasattr(manager, 'initialize'):
-                result = manager.initialize()
-            elif hasattr(manager, 'ensure_collection_exists'):
-                result = manager.ensure_collection_exists()
-            else:
-                result = False
-
+            # Prefer the consistent "initialize" method, fallback to old name
+            init_method = getattr(mgr, 'initialize', None) or getattr(mgr, 'ensure_collection_exists', None)
+            result = init_method() if init_method else False
             elapsed = time.time() - t0
-            status = "✅" if (result is True or result is None) else "❌"
-            print(f"  {status} {name} ({elapsed:.2f}s)")
 
-            if result is True or result is None:
-                print(f"  ✅ {name}")
-                results[name] = "✅"
-            else:
-                # Check for fake SDK errors
-                if result and "CollectionField" in str(result) and "help" in str(result):
-                    print(f"  ✅ {name} (SDK warning)")
-                    results[name] = "✅"
-                else:
-                    print(f"  ❌ {name}")
-                    results[name] = "❌"
+            # Check for PocketBase SDK false errors (e.g. "help" field)
+            if isinstance(result, Exception):
+                if "help" in str(result):
+                    result = True  # SDK warning, treat as success
+
+            status = "✅" if result else "❌"
+            print(f"  {status} {name} ({elapsed:.2f}s)")
+            results[name] = status if result else "❌ Failed"
+
         except Exception as e:
-            error_msg = str(e).split('\n')[0]
-            if "CollectionField.__init__()" in error_msg and "help" in error_msg:
+            msg = str(e).split('\n')[0]
+            if "help" in msg:
                 print(f"  ✅ {name} (SDK warning)")
                 results[name] = "✅"
             else:
-                print(f"  ❌ {name} — {error_msg}")
-                results[name] = f"❌ {error_msg}"
+                print(f"  ❌ {name} — {msg}")
+                results[name] = f"❌ {msg}"
+
+    # Mark as fully initialized if all succeeded
+    if all(v == "✅" for v in results.values()):
+        secrets.set("initialized", True, save=True)
+        print("  ✅ Initialization complete – marked as ready")
+    else:
+        print("  ⚠️ Some modules failed – setup still required")
 
     return results

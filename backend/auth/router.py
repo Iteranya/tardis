@@ -26,24 +26,12 @@ templates = Jinja2Templates(directory="frontend")
 # ─── Helper: Check if setup is needed ───
 
 def _setup_required() -> bool:
-    """
-    Returns True if the system hasn't been configured yet.
-    Redirects to /auth/setup in those cases.
-    """
     secrets = SecretsManager()
-
-    # No credentials at all?
     if not secrets.is_configured:
         return True
-
-    # Still using default PocketBase URL?
-    if secrets.pocketbase_url == "http://127.0.0.1:8090":
-        # Check if admin email is still empty (means default/unconfigured)
-        if not secrets.admin_email:
-            return True
-
+    if not secrets.get("initialized", False):
+        return True
     return False
-
 
 def _maybe_redirect_to_setup(request: Request):
     """Redirect to /auth/setup if system isn't configured yet."""
@@ -119,17 +107,10 @@ async def register_page(request: Request):
 
 @page_router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
-    """Render the setup wizard. Always accessible."""
-    # If already configured, show a message but still let them in
+    """Render the setup wizard. Redirect if already configured."""
     if not _setup_required():
-        # They can still access setup, but we'll pass a flag
-        return templates.TemplateResponse(
-            "auth/setup/setup.html",
-            {
-                "request": request,
-                "already_configured": True,
-            },
-        )
+        # Already configured, send to login
+        return RedirectResponse(url="/auth/login")
 
     return templates.TemplateResponse(
         "auth/setup/setup.html",
@@ -189,9 +170,6 @@ async def save_credentials(
     secrets.set("pocketbase.admin_email", data.email, save=False)
     secrets.set("pocketbase.admin_password", data.password, save=True)
     return {"ok": True, "message": "Credentials saved to secrets.json."}
-
-
-
 
 @api_router.post("/setup/initialize-collections")
 async def initialize_collections():
