@@ -3,6 +3,8 @@ import re
 from typing import Optional
 from pocketbase import PocketBase
 from pocketbase.client import FileUpload
+from backend.util.auth import authenticate_admin
+from backend.util.pocketbase import collection_exists
 from backend.util.secrets import SecretsManager
 
 
@@ -61,33 +63,55 @@ class SiteManager:
         self._is_authenticated = False
 
     def authenticate_admin(self) -> bool:
+        """Authenticate as superadmin for collection management."""
         if not self.admin_email or not self.admin_password:
-            raise ValueError("Aina-chan needs admin email and password! ⊙﹏⊙")
+            raise ValueError(
+                "Aina-chan needs admin email and password to manage collections! ⊙﹏⊙"
+            )
+
         try:
-            self.client.admins.auth_with_password(self.admin_email, self.admin_password)
-            self._is_authenticated = True
-            return True
+            result = authenticate_admin(
+                self.client,
+                self.admin_email,
+                self.admin_password,
+            )
+            self._is_authenticated = result
+            return result
         except Exception as e:
             print(f"Aina-chan couldn't authenticate! Error: {e} (╥﹏╥)")
             self._is_authenticated = False
             return False
 
     def ensure_collection_exists(self) -> bool:
-        """Create the sites collection if it doesn't exist. Completely self-contained!"""
+        """Check if collection exists, create if not.
+
+        Aina-chan's robust approach: if creation fails because
+        the collection already exists, that's fine too! (◕‿◕✿)
+        """
         if not self._is_authenticated:
             if not self.authenticate_admin():
                 return False
+
         try:
-            try:
-                self.client.collections.get_one(self.COLLECTION_NAME)
-                return True
-            except Exception:
-                self.client.collections.create(self._collection_schema)
-                print("Aina-chan created the 'sites' collection! ✨")
-                return True
+            # Try to create the collection
+            self.client.collections.create(self._collection_schema)
+            print(f"Aina-chan created the '{self.COLLECTION_NAME}' collection! ✨")
+            return True
+
         except Exception as e:
+            # Check if the error is "name already exists" — that's okay!
+            error_data = getattr(e, 'data', {})
+            if isinstance(error_data, dict):
+                data_field = error_data.get('data', {})
+                if isinstance(data_field, dict):
+                    name_error = data_field.get('name', {})
+                    if isinstance(name_error, dict):
+                        if name_error.get('code') == 'validation_collection_name_exists':
+                            return True  # ✅ Already exists! All good!
+
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False
+
 
     # ─── CRUD ─────────────────────────────────────────────────
 

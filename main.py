@@ -4,10 +4,14 @@ Anita-CMS Main Entry Point 🎀
 A modular CMS built with FastAPI + PocketBase.
 Each module is fully self-contained and can be deleted independently!
 """
-
+import os
+import getpass
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from backend.util.secrets import SecretsManager
+
 
 # ─── Import all modules ────────────────────────────────────────
 # Each module is 100% independent!
@@ -21,23 +25,70 @@ from backend.storage.router import router as storage_router
 from backend.users.router import router as users_router
 
 
+# ─── Credential Setup ─────────────────────────────────────────
+
+def _ensure_credentials():
+    """
+    Check if PocketBase credentials are configured.
+
+    If not, prompt Senpai to enter them!
+    Aina-chan will save them to secrets.json for next time. (◕‿◕✿)
+    """
+    secrets = SecretsManager()
+
+    if secrets.is_configured:
+        print("✅ PocketBase credentials found in secrets.json")
+        return secrets
+
+    print("\n" + "=" * 50)
+    print("  🔑  Aina-chan needs your PocketBase credentials!")
+    print("=" * 50)
+    print("  (These will be saved to secrets.json for next time~)\n")
+
+    # Prompt for PocketBase URL (optional, default is fine)
+    default_url = secrets.pocketbase_url
+    url_input = input(f"  🌐 PocketBase URL [{default_url}]: ").strip()
+    if url_input:
+        secrets.set("pocketbase.url", url_input, save=False)
+    else:
+        secrets.set("pocketbase.url", default_url, save=False)
+
+    # Prompt for admin email (required)
+    while True:
+        email = input("  📧 Admin email: ").strip()
+        if email:
+            secrets.set("pocketbase.admin_email", email, save=False)
+            break
+        print("  ❌ Aina-chan needs an email to proceed! (╥﹏╥)")
+
+    # Prompt for admin password (required, hidden input)
+    while True:
+        password = getpass.getpass("  🔒 Admin password: ").strip()
+        if password:
+            secrets.set("pocketbase.admin_password", password, save=False)
+            break
+        print("  ❌ Aina-chan needs a password to proceed! (╥﹏╥)")
+
+    # Save all at once
+    secrets.save()
+    print("\n  ✅ Credentials saved to secrets.json ✨\n")
+
+    return secrets
+
+
 # ─── Lifespan ──────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Aina-chan's startup/shutdown handler! (◕‿◕✿)
-
-    This runs when the app starts up to ensure all collections
-    are initialized. If a module is deleted, its initialization
-    is just skipped!
     """
-    print("🌟 Anita-CMS is starting up...")
+    print("\n🌟 Anita-CMS is starting up...")
 
-    # Initialize each module's collection
-    # If a module is deleted, the import won't exist,
-    # so this code won't be reached for that module.
+    # Step 1: Make sure we have credentials
+    _ensure_credentials()
 
+    # Step 2: Initialize each module's collections
     _init_modules()
 
     yield  # App runs here
@@ -75,6 +126,8 @@ def _init_modules():
             print(f"  {status} {name}")
         except Exception as e:
             print(f"  ❌ {name} — {e}")
+
+    print()  # Empty line for readability
 
 
 # ─── App Instance ──────────────────────────────────────────────
@@ -190,3 +243,34 @@ async def health_check():
         "status": "healthy",
         "timestamp": __import__("datetime").datetime.now().isoformat(),
     }
+
+# ─── Main Entry Point ─────────────────────────────────────────
+
+if __name__ == "__main__":
+    """
+    Aina-chan's direct run mode! (◕‿◕✿)
+
+    Usage:
+        uv run main.py
+        # or
+        python backend/main.py
+    """
+    import uvicorn
+
+    # Get port from environment or use default
+    port = int(os.environ.get("PORT", 8000))
+
+    # Get host from environment or use default
+    host = os.environ.get("HOST", "0.0.0.0")
+
+    print(f"🎀 Anita-CMS starting on http://{host}:{port}")
+    print(f"📚 API Docs at http://{host}:{port}/docs")
+    print()
+
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=True,        # Auto-reload on file changes
+        log_level="info",
+    )

@@ -18,8 +18,17 @@ class CollectionService:
     for managing collection definitions.
     """
 
-    def __init__(self):
-        self.manager = CollectionManager()
+    def initialize(self) -> bool:
+        """
+        Initialize the Collections service.
+
+        For Collections, there's no single collection to create.
+        This method just verifies auth works and returns True.
+        """
+        try:
+            return CollectionManager()
+        except Exception:
+            return False
 
     # ─── CRUD ─────────────────────────────────────────────────
 

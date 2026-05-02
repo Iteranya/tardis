@@ -1,6 +1,7 @@
 import re
 from typing import Optional, List
 from pocketbase import PocketBase
+from backend.util.auth import authenticate_admin
 from backend.util.secrets import SecretsManager
 
 
@@ -28,11 +29,18 @@ class CollectionManager:
     def authenticate_admin(self) -> bool:
         """Authenticate as superadmin for collection management."""
         if not self.admin_email or not self.admin_password:
-            raise ValueError("Aina-chan needs admin email and password! ⊙﹏⊙")
+            raise ValueError(
+                "Aina-chan needs admin email and password to manage collections! ⊙﹏⊙"
+            )
+
         try:
-            self.client.admins.auth_with_password(self.admin_email, self.admin_password)
-            self._is_authenticated = True
-            return True
+            result = authenticate_admin(
+                self.client,
+                self.admin_email,
+                self.admin_password,
+            )
+            self._is_authenticated = result
+            return result
         except Exception as e:
             print(f"Aina-chan couldn't authenticate! Error: {e} (╥﹏╥)")
             self._is_authenticated = False

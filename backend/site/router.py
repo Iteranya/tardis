@@ -1,245 +1,200 @@
-# app/routers/pages.py
-import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pages.schema import PageCreate, PageListResponse, PageResponse, PageUpdate
-from backend.pages.manager import PageCollectionManager
-
-# ─── Dependency ───
-
-def get_page_manager() -> PageCollectionManager:
-    """
-    FastAPI dependency that provides a PageCollectionManager instance.
-
-    Aina-chan ensures the collection exists before returning it! (◕‿◕✿)
-    """
-    manager = PageCollectionManager()
-
-    # Auto-initialize the collection if needed
-    if not manager.ensure_collection_exists():
-        raise HTTPException(
-            status_code=500,
-            detail="Aina-chan couldn't initialize the pages collection! (╥﹏╥)",
-        )
-
-    return manager
-
-
-# ─── Router ───
+from backend.site.service import SiteService
+from backend.site.schema import (
+    SiteCreate,
+    SiteUpdate,
+    SiteResponse,
+    SiteSummaryListResponse,
+)
+import os, tempfile
 
 router = APIRouter(
-    prefix="/pages",
-    tags=["Pages"],
-    responses={404: {"description": "Page not found"}},
+    prefix="/sites",
+    tags=["Sites"],
 )
 
 
-@router.get("", response_model=PageListResponse)
-async def list_pages(
+def get_service() -> SiteService:
+    service = SiteService()
+    if not service.initialize():
+        raise HTTPException(
+            status_code=500,
+            detail="Aina-chan couldn't initialize sites! (╥﹏╥)",
+        )
+    return service
+
+
+@router.get("", response_model=SiteSummaryListResponse)
+async def list_sites(
     page: int = 1,
     per_page: int = 20,
     sort: str = "-sort_order",
-    filter: Optional[str] = None,
-    manager: PageCollectionManager = Depends(get_page_manager),
+    enabled: Optional[bool] = None,
+    author: Optional[str] = None,
+    label: Optional[str] = None,
+    tag: Optional[str] = None,
+    search: Optional[str] = None,
+    service: SiteService = Depends(get_service),
 ):
-    """
-    Get a paginated list of pages.
-
-    Aina-chan supports filtering and sorting too~♪
-    """
-    result = manager.list_pages(
+    """List site entries with filters."""
+    return service.list_sites(
         page=page,
         per_page=per_page,
         sort=sort,
-        filter=filter,
-    )
-
-    return PageListResponse(
-        items=[PageResponse(**item) for item in result.get("items", [])],
-        page=result.get("page", page),
-        per_page=result.get("perPage", per_page),
-        total_items=result.get("totalItems", 0),
-        total_pages=result.get("totalPages", 0),
+        enabled=enabled,
+        author=author,
+        label=label,
+        tag=tag,
+        search=search,
     )
 
 
-@router.post("", response_model=PageResponse, status_code=201)
-async def create_page(
-    page_data: PageCreate,
-    manager: PageCollectionManager = Depends(get_page_manager),
+@router.post("", response_model=SiteResponse, status_code=201)
+async def create_site(
+    data: SiteCreate,
+    service: SiteService = Depends(get_service),
 ):
-    """
-    Create a new page.
-
-    Aina-chan will check if the slug is already taken! (｀・ω・´)
-    """
-    # Check for duplicate slug
-    existing = manager.get_page_by_slug(page_data.slug)
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"A page with slug '{page_data.slug}' already exists! "
-                   f"Aina-chan can't have duplicates~ (╥﹏╥)",
-        )
-
-    result = manager.create_page(page_data.model_dump(exclude_unset=True))
-    if not result:
-        raise HTTPException(
-            status_code=500,
-            detail="Aina-chan couldn't create the page! Something went wrong~",
-        )
-
-    return PageResponse(**result)
+    """Create a new site entry."""
+    try:
+        return service.create_site(data)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{page_id}", response_model=PageResponse)
-async def get_page(
-    page_id: str,
-    manager: PageCollectionManager = Depends(get_page_manager),
+@router.get("/stats")
+async def site_stats(
+    service: SiteService = Depends(get_service),
 ):
-    """
-    Get a single page by its ID.
-    """
-    result = manager.get_page(page_id)
+    """Get site statistics."""
+    return service.get_stats()
+
+
+@router.get("/slug/suggest")
+async def suggest_slug(
+    title: str,
+    service: SiteService = Depends(get_service),
+):
+    """Suggest a unique slug for a given title."""
+    slug = service.suggest_slug(title)
+    return {"slug": slug, "title": title}
+
+
+@router.get("/{site_id}", response_model=SiteResponse)
+async def get_site(
+    site_id: str,
+    service: SiteService = Depends(get_service),
+):
+    """Get a site entry by ID."""
+    result = service.get_site(site_id)
     if not result:
         raise HTTPException(
             status_code=404,
-            detail=f"Aina-chan couldn't find a page with ID '{page_id}'~ (╥﹏╥)",
+            detail=f"Aina-chan couldn't find site '{site_id}'~ (╥﹏╥)",
         )
+    return result
 
-    return PageResponse(**result)
 
-
-@router.get("/slug/{slug}", response_model=PageResponse)
-async def get_page_by_slug(
+@router.get("/slug/{slug}", response_model=SiteResponse)
+async def get_site_by_slug(
     slug: str,
-    manager: PageCollectionManager = Depends(get_page_manager),
+    service: SiteService = Depends(get_service),
 ):
-    """
-    Get a single page by its URL slug.
-    """
-    result = manager.get_page_by_slug(slug)
+    """Get a site entry by slug."""
+    result = service.get_site_by_slug(slug)
     if not result:
         raise HTTPException(
             status_code=404,
-            detail=f"Aina-chan couldn't find a page with slug '{slug}'~ (╥﹏╥)",
+            detail=f"Aina-chan couldn't find site with slug '{slug}'~ (╥﹏╥)",
         )
+    return result
 
-    return PageResponse(**result)
 
-
-@router.put("/{page_id}", response_model=PageResponse)
-async def update_page(
-    page_id: str,
-    page_data: PageUpdate,
-    manager: PageCollectionManager = Depends(get_page_manager),
+@router.put("/{site_id}", response_model=SiteResponse)
+async def update_site(
+    site_id: str,
+    data: SiteUpdate,
+    service: SiteService = Depends(get_service),
 ):
-    """
-    Update an existing page.
-
-    Aina-chan will check slug uniqueness if Senpai is changing the slug! (◕‿◕✿)
-    """
-    # Check if page exists first
-    existing = manager.get_page(page_id)
-    if not existing:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Aina-chan couldn't find a page with ID '{page_id}'~ (╥﹏╥)",
-        )
-
-    # If slug is being changed, check for duplicates
-    update_data = page_data.model_dump(exclude_unset=True)
-    if "slug" in update_data and update_data["slug"] != existing.get("slug"):
-        slug_exists = manager.get_page_by_slug(update_data["slug"])
-        if slug_exists and slug_exists["id"] != page_id:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Another page already has the slug '{update_data['slug']}'! "
-                       f"Aina-chan can't allow duplicates~",
-            )
-
-    result = manager.update_page(page_id, update_data)
-    if not result:
-        raise HTTPException(
-            status_code=500,
-            detail="Aina-chan couldn't update the page! Something went wrong~",
-        )
-
-    return PageResponse(**result)
+    """Update a site entry."""
+    try:
+        return service.update_site(site_id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{page_id}", status_code=204)
-async def delete_page(
-    page_id: str,
-    manager: PageCollectionManager = Depends(get_page_manager),
+@router.delete("/{site_id}", status_code=204)
+async def delete_site(
+    site_id: str,
+    service: SiteService = Depends(get_service),
 ):
-    """
-    Delete a page by its ID.
-    """
-    # Check if page exists
-    existing = manager.get_page(page_id)
-    if not existing:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Aina-chan couldn't find a page with ID '{page_id}'~ (╥﹏╥)",
-        )
-
-    success = manager.delete_page(page_id)
-    if not success:
-        raise HTTPException(
-            status_code=500,
-            detail="Aina-chan couldn't delete the page! Something went wrong~",
-        )
-
-    return None
+    """Delete a site entry."""
+    try:
+        service.delete_site(site_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{page_id}/thumbnail", response_model=PageResponse)
-async def upload_page_thumbnail(
-    page_id: str,
+@router.post("/{site_id}/publish", response_model=SiteResponse)
+async def publish_site(
+    site_id: str,
+    service: SiteService = Depends(get_service),
+):
+    """Publish a site entry (enable + promote draft to release)."""
+    try:
+        return service.publish_site(site_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{site_id}/unpublish", response_model=SiteResponse)
+async def unpublish_site(
+    site_id: str,
+    service: SiteService = Depends(get_service),
+):
+    """Unpublish a site entry (disable only, content preserved)."""
+    try:
+        return service.unpublish_site(site_id)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{site_id}/thumbnail", response_model=SiteResponse)
+async def upload_thumbnail(
+    site_id: str,
     file: UploadFile = File(...),
-    manager: PageCollectionManager = Depends(get_page_manager),
+    service: SiteService = Depends(get_service),
 ):
-    """
-    Upload a thumbnail image for a page.
-
-    Aina-chan supports JPEG, PNG, and WebP images up to 5MB! (◕‿◕✿)
-    """
-    # Check if page exists
-    existing = manager.get_page(page_id)
-    if not existing:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Aina-chan couldn't find a page with ID '{page_id}'~ (╥﹏╥)",
-        )
-
-    # Validate file type
-    allowed_types = ["image/jpeg", "image/png", "image/webp"]
-    if file.content_type not in allowed_types:
+    """Upload a thumbnail image for a site entry."""
+    allowed = ["image/jpeg", "image/png", "image/webp"]
+    if file.content_type not in allowed:
         raise HTTPException(
             status_code=400,
-            detail=f"Aina-chan only accepts JPEG, PNG, or WebP images! "
-                   f"Senpai sent '{file.content_type}'~ (╥﹏╥)",
+            detail=f"Aina-chan only accepts JPEG, PNG, or WebP! "
+                   f"Got '{file.content_type}'~ (╥﹏╥)",
         )
 
-    # Save the uploaded file temporarily
-    temp_path = f"/tmp/{file.filename}"
-    try:
-        content = await file.read()
-        with open(temp_path, "wb") as f:
-            f.write(content)
 
-        # Upload to PocketBase
-        result = manager.upload_thumbnail(page_id, temp_path)
+    suffix = os.path.splitext(file.filename or "upload.jpg")[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        result = service.manager.upload_thumbnail(site_id, tmp_path)
         if not result:
             raise HTTPException(
                 status_code=500,
-                detail="Aina-chan couldn't upload the thumbnail! Something went wrong~",
+                detail="Aina-chan couldn't upload the thumbnail~",
             )
-
-        return PageResponse(**result)
-
+        return SiteResponse(**result)
     finally:
-        # Clean up temp file
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)

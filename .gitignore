@@ -1,13 +1,36 @@
-/__pycache__
-/.venv
-venv
+# ─── Python ───
+__pycache__/                   
+*.py[cod]                     
+*.so                           
+
+# ─── Virtual Environments ───
+.venv/
+venv/
+env/
+
+# ─── Environment ───
 .env
+
+# ─── Databases ───
 *.db
 *.db-shm
 *.db-wal
-*.json
+
+# ─── JSON (be careful!) ───
+*.json                      
+secrets.json                  
+
+# ─── Binaries ───
 *.exe
+
+# ─── Logs ───
 *.log
-!default_config.json
-!default_pages.json
-!default_roles.json
+
+# ─── IDE ───
+.vscode/
+.idea/
+
+# ─── OS ───
+.DS_Store
+Thumbs.db
+pb*

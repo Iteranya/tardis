@@ -2,6 +2,8 @@ import os
 import re
 from typing import Optional, List
 from pocketbase import PocketBase
+from backend.util.auth import authenticate_admin
+from backend.util.pocketbase import get_collection_by_name
 from backend.util.secrets import SecretsManager
 
 
@@ -59,12 +61,20 @@ class UserManager:
         self._is_authenticated = False
 
     def authenticate_admin(self) -> bool:
+        """Authenticate as superadmin for collection management."""
         if not self.admin_email or not self.admin_password:
-            raise ValueError("Aina-chan needs admin email and password! ⊙﹏⊙")
+            raise ValueError(
+                "Aina-chan needs admin email and password to manage collections! ⊙﹏⊙"
+            )
+
         try:
-            self.client.admins.auth_with_password(self.admin_email, self.admin_password)
-            self._is_authenticated = True
-            return True
+            result = authenticate_admin(
+                self.client,
+                self.admin_email,
+                self.admin_password,
+            )
+            self._is_authenticated = result
+            return result
         except Exception as e:
             print(f"Aina-chan couldn't authenticate! Error: {e} (╥﹏╥)")
             self._is_authenticated = False
@@ -81,60 +91,108 @@ class UserManager:
         """Create the roles collection if it doesn't exist."""
         if not self._ensure_auth():
             return False
+
         try:
-            try:
-                self.client.collections.get_one(self.ROLES_COLLECTION)
-                return True
-            except Exception:
-                self.client.collections.create(self._roles_schema)
-                print("Aina-chan created the 'roles' collection! ✨")
-                return True
+            self.client.collections.create(self._roles_schema)
+            print("Aina-chan created the 'roles' collection! ✨")
+            return True
+
         except Exception as e:
+            error_data = getattr(e, 'data', {})
+            if isinstance(error_data, dict):
+                data_field = error_data.get('data', {})
+                if isinstance(data_field, dict):
+                    name_error = data_field.get('name', {})
+                    if isinstance(name_error, dict):
+                        if name_error.get('code') == 'validation_collection_name_exists':
+                            return True  # ✅ Already exists!
+
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False
+
 
     # ─── Ensure Role Field on Users Collection ────────────────
 
     def ensure_role_field_on_users(self) -> bool:
-        """
-        Add a 'role' relation field to PocketBase's built-in users collection.
-
-        This is needed so each user can have a role assigned.
-
-        ⚠️ This modifies the system 'users' collection, but it's safe —
-        Aina-chan only adds a field, never removes existing ones!
-        """
+        """Add a 'role' relation field to PocketBase's users collection."""
         if not self._ensure_auth():
             return False
 
+        import httpx
+
         try:
-            # Get the users collection
-            users_col = self.client.collections.get_one("users")
+            token = self.client.auth_store.token
+            headers = {"Authorization": f"Bearer {token}"}
 
-            # Check if 'role' field already exists
+            # Step 1: Get the roles collection's actual ID
+            roles_response = httpx.get(
+                f"{self.pb_url}/api/collections",
+                headers=headers,
+                params={"filter": 'name = "roles"', "perPage": 1},
+            )
+            roles_response.raise_for_status()
+            roles_data = roles_response.json()
+            roles_items = roles_data.get("items", [])
+
+            if not roles_items:
+                print("Aina-chan couldn't find the roles collection! (╥﹏╥)")
+                return False
+
+            roles_collection_id = roles_items[0]["id"]  # ← Get the real ID!
+            print(f"🔍 Found roles collection ID: {roles_collection_id}")
+
+            # Step 2: Get the users collection
+            users_response = httpx.get(
+                f"{self.pb_url}/api/collections",
+                headers=headers,
+                params={"filter": 'name = "users"', "perPage": 1},
+            )
+            users_response.raise_for_status()
+            users_data = users_response.json()
+            users_items = users_data.get("items", [])
+
+            if not users_items:
+                print("Aina-chan couldn't find the users collection! (╥﹏╥)")
+                return False
+
+            users_col = users_items[0]
             existing_fields = users_col.get("fields", [])
-            for field in existing_fields:
-                if field.get("name") == "role":
-                    return True  # Already exists!
+            field_names = [f.get("name") for f in existing_fields]
 
-            # Add the role field
+            if "role" in field_names:
+                return True  # Already has it!
+
+            # Step 3: Add the role field with the CORRECT collection ID
             role_field = {
                 "name": "role",
                 "type": "relation",
                 "required": False,
-                "collectionId": self.ROLES_COLLECTION,
+                "collectionId": roles_collection_id,  # ← Use real ID, not name!
                 "cascadeDelete": False,
                 "maxSelect": 1,
             }
-
             existing_fields.append(role_field)
-            self.client.collections.update("users", {"fields": existing_fields})
+
+            # Step 4: Update via raw HTTP
+            update_response = httpx.patch(
+                f"{self.pb_url}/api/collections/{users_col['id']}",
+                headers=headers,
+                json={"fields": existing_fields},
+            )
+
+            if update_response.status_code != 200:
+                print(f"🔍 Aina-chan's debug — Error body: {update_response.text}")
+                update_response.raise_for_status()
+
             print("Aina-chan added 'role' field to users collection! ✨")
             return True
 
         except Exception as e:
             print(f"Aina-chan couldn't add role field! Error: {e} (╥﹏╥)")
             return False
+
+
+
 
     def initialize(self) -> bool:
         """
