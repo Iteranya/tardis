@@ -15,7 +15,7 @@ class SiteManager:
     Can be deleted without breaking anything else!
     """
 
-    COLLECTION_NAME = "sites"
+    COLLECTION_NAME = "sys_sites"
 
     @property
     def _collection_schema(self) -> dict:

@@ -489,8 +489,6 @@ class SitemapManager:
         routes = {}
 
         for group_name, group in self._data["groups"].items():
-            group_slug = group.get("slug", "")
-
             for entry_slug, entry in group["entries"].items():
                 if not entry.get("enabled", False):
                     continue

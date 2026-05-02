@@ -15,7 +15,7 @@ class StorageManager:
     This can be deleted without breaking anything else!
     """
 
-    COLLECTION_NAME = "storage"
+    COLLECTION_NAME = "sys_storage"
 
     @property
     def _collection_schema(self) -> dict:
