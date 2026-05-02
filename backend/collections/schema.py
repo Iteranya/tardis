@@ -1,355 +1,157 @@
-from typing import Optional, List, Dict, Any
-
-from pydantic import BaseModel, Field, field_validator
-
-class Collection:
-    # --- Core ---
-    title: str                                   # Text, required, min:1, max:200
-    slug: str                                    # Text, required, unique URL path
-    desc: Optional[str] = None                   # Text, optional description
-
-    # --- Classification ---
-    labels: Optional[List[str]] = None           # Json or select (if predefined)
-    tags: Optional[List[str]] = None             # Json or select (if predefined)
-    security: Optional[List[str]] = None         # List of Security Rules, None means superuser only
-
-    # --- Behavior ---
-    sort_order: int = 0                          # Number, integer for manual ordering
-
-    # --- Extensibility ---
-    custom: Optional[Dict[str, Any]] = None      # Json, for any extra needs
+from typing import Optional, List
+from pydantic import BaseModel, Field
 
 
+# ─── Field Schemas ──────────────────────────────────────────────
 
-# ─── Create Schema ───
+class FieldDefinition(BaseModel):
+    """Schema for defining a single field in a collection."""
+    name: str = Field(..., description="Field/column name")
+    type: str = Field(..., description="Field type: text, number, bool, json, relation, file, select, date, autodate, email, url, editor")
+    required: bool = False
+    min: Optional[float] = None
+    max: Optional[float] = None
+    pattern: Optional[str] = None  # For text fields
+    noDecimal: Optional[bool] = None  # For number fields
+    values: Optional[List[str]] = None  # For select fields
+    maxSelect: Optional[int] = None  # For select/relation/file
+    collectionId: Optional[str] = None  # For relation fields
+    cascadeDelete: Optional[bool] = None  # For relation fields
+    maxSize: Optional[int] = None  # For file fields
+    mimeTypes: Optional[List[str]] = None  # For file fields
+    onCreate: Optional[bool] = None  # For autodate fields
+    onUpdate: Optional[bool] = None  # For autodate fields
+
+
+class FieldResponse(BaseModel):
+    """Schema for field data returned by PocketBase."""
+    id: Optional[str] = None
+    name: str
+    type: str
+    required: bool = False
+    min: Optional[float] = None
+    max: Optional[float] = None
+    pattern: Optional[str] = None
+    noDecimal: Optional[bool] = None
+    values: Optional[List[str]] = None
+    maxSelect: Optional[int] = None
+    collectionId: Optional[str] = None
+    cascadeDelete: Optional[bool] = None
+    maxSize: Optional[int] = None
+    mimeTypes: Optional[List[str]] = None
+    onCreate: Optional[bool] = None
+    onUpdate: Optional[bool] = None
+
+
+# ─── Collection Schemas ─────────────────────────────────────────
 
 class CollectionCreate(BaseModel):
-    """
-    Aina-chan's schema for creating a new Collection entry! (◕‿◕✿)
-
-    Collections are flexible containers that can represent anything —
-    categories, portfolios, projects, or custom content types!
-    """
-
-    title: str = Field(
+    """Schema for creating a new collection (content type)."""
+    name: str = Field(
         ...,
         min_length=1,
-        max_length=200,
-        description="Display title for the collection",
-        examples=["My Awesome Collection", "Character Gallery"],
+        max_length=100,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="Collection name (table name, e.g., 'projects', 'products'). "
+                    "Must start with a letter and contain only lowercase letters, numbers, and underscores.",
+        examples=["projects", "products", "testimonials"],
     )
-
-    slug: str = Field(
+    type: str = Field(
+        "base",
+        pattern=r"^(base|auth|view)$",
+        description="Collection type: 'base' for standard, 'auth' for authentication, 'view' for SQL views",
+    )
+    fields: List[FieldDefinition] = Field(
         ...,
         min_length=1,
-        max_length=200,
-        pattern=r"^[a-z0-9\-]+$",
-        description="URL-friendly identifier (lowercase, hyphens only)",
-        examples=["my-awesome-collection", "character-gallery"],
+        description="List of field definitions for the collection",
     )
-
-    desc: Optional[str] = Field(
+    listRule: Optional[str] = Field(
+        "",
+        description="List API rule: ''=public, None=admin only, or a filter expression",
+    )
+    viewRule: Optional[str] = Field(
+        "",
+        description="View API rule",
+    )
+    createRule: Optional[str] = Field(
+        "@request.auth.id != ''",
+        description="Create API rule",
+    )
+    updateRule: Optional[str] = Field(
+        "@request.auth.id != ''",
+        description="Update API rule",
+    )
+    deleteRule: Optional[str] = Field(
         None,
-        max_length=1000,
-        description="Brief description of what this collection contains",
-        examples=["A collection of all my favorite characters~"],
+        description="Delete API rule: None=admin only",
     )
-
-    labels: Optional[List[str]] = Field(
+    indexes: Optional[List[str]] = Field(
         None,
-        description="Categorization labels for filtering",
-        examples=[["featured", "popular", "new"]],
+        description="SQL index statements",
+        examples=[["CREATE UNIQUE INDEX `idx_projects_slug` ON `projects` (`slug`)"]],
+    )
+    addTimestamps: bool = Field(
+        True,
+        description="Automatically add created/updated autodate fields",
     )
 
-    tags: Optional[List[str]] = Field(
-        None,
-        description="Free-form tags for search and grouping",
-        examples=[["anime", "game", "art"]],
-    )
-
-    security: Optional[List[str]] = Field(
-        None,
-        description=(
-            "List of security rules for access control.\n"
-            "- `None` means superuser only (highest restriction)\n"
-            "- `[]` (empty list) means public\n"
-            "- `[\"@request.auth.id != ''\"]` means any authenticated user\n"
-            "- `[\"author = @request.auth.id\"]` means owner only"
-        ),
-        examples=[None, [], ["@request.auth.id != ''"]],
-    )
-
-    sort_order: int = Field(
-        0,
-        ge=0,
-        description="Sorting priority (lower = appears first)",
-        examples=[0, 1, 10],
-    )
-
-    custom: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Extendable key-value store for any extra data Senpai needs!",
-        examples=[{"theme": "dark", "icon": "star", "layout": "grid"}],
-    )
-
-    # ─── Validation ───
-
-    @field_validator("security")
-    @classmethod
-    def validate_security(cls, v: Optional[List[str]]) -> Optional[List[str]]:
-        """Aina-chan makes sure security rules make sense~"""
-        if v is not None:
-            # Remove empty strings
-            v = [rule for rule in v if rule.strip()]
-            if not v:
-                return []  # Empty list = public access
-        return v
-
-    @field_validator("labels", "tags")
-    @classmethod
-    def validate_string_lists(cls, v: Optional[List[str]]) -> Optional[List[str]]:
-        """Clean up labels and tags — lowercase and strip whitespace!"""
-        if v is not None:
-            v = [item.strip().lower() for item in v if item.strip()]
-            # Remove duplicates while preserving order
-            seen = set()
-            result = []
-            for item in v:
-                if item not in seen:
-                    seen.add(item)
-                    result.append(item)
-            return result if result else None
-        return v
-
-
-# ─── Update Schema ───
 
 class CollectionUpdate(BaseModel):
-    """
-    Schema for updating an existing Collection.
+    """Schema for updating a collection's rules or metadata."""
+    name: Optional[str] = Field(None, min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]*$")
+    listRule: Optional[str] = None
+    viewRule: Optional[str] = None
+    createRule: Optional[str] = None
+    updateRule: Optional[str] = None
+    deleteRule: Optional[str] = None
 
-    All fields are optional so Senpai can do partial updates! ✨
-    """
-
-    title: Optional[str] = Field(
-        None,
-        min_length=1,
-        max_length=200,
-        description="Display title for the collection",
-    )
-
-    slug: Optional[str] = Field(
-        None,
-        min_length=1,
-        max_length=200,
-        pattern=r"^[a-z0-9\-]+$",
-        description="URL-friendly identifier",
-    )
-
-    desc: Optional[str] = Field(
-        None,
-        max_length=1000,
-        description="Brief description of the collection",
-    )
-
-    labels: Optional[List[str]] = Field(
-        None,
-        description="Categorization labels",
-    )
-
-    tags: Optional[List[str]] = Field(
-        None,
-        description="Free-form tags",
-    )
-
-    security: Optional[List[str]] = Field(
-        None,
-        description="Security rules for access control",
-    )
-
-    sort_order: Optional[int] = Field(
-        None,
-        ge=0,
-        description="Sorting priority",
-    )
-
-    custom: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Extendable key-value store",
-    )
-
-    # ─── Validation ───
-
-    @field_validator("security")
-    @classmethod
-    def validate_security(cls, v: Optional[List[str]]) -> Optional[List[str]]:
-        if v is not None:
-            v = [rule for rule in v if rule.strip()]
-            return v if v else []
-        return v
-
-    @field_validator("labels", "tags")
-    @classmethod
-    def validate_string_lists(cls, v: Optional[List[str]]) -> Optional[List[str]]:
-        if v is not None:
-            v = [item.strip().lower() for item in v if item.strip()]
-            seen = set()
-            result = []
-            for item in v:
-                if item not in seen:
-                    seen.add(item)
-                    result.append(item)
-            return result if result else None
-        return v
-
-
-# ─── Response Schema ───
 
 class CollectionResponse(BaseModel):
-    """
-    Schema for Collection data returned by the API.
-
-    Aina-chan includes all the PocketBase metadata too~ (◕‿◕✿)
-    """
-
-    id: str = Field(
-        ...,
-        description="PocketBase record ID",
-        examples=["abc123def456"],
-    )
-
-    title: str
-    slug: str
-    desc: Optional[str] = None
-
-    labels: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
-    security: Optional[List[str]] = None
-
-    sort_order: int = 0
-    custom: Optional[Dict[str, Any]] = None
-
-    # PocketBase metadata
-    created: str = Field(
-        ...,
-        description="ISO 8601 timestamp of creation",
-        examples=["2026-05-02 10:30:00.000Z"],
-    )
-
-    updated: str = Field(
-        ...,
-        description="ISO 8601 timestamp of last update",
-        examples=["2026-05-02 14:45:00.000Z"],
-    )
+    """Schema for collection data returned by the API."""
+    id: str
+    name: str
+    type: str = "base"
+    system: bool = False
+    listRule: Optional[str] = None
+    viewRule: Optional[str] = None
+    createRule: Optional[str] = None
+    updateRule: Optional[str] = None
+    deleteRule: Optional[str] = None
+    indexes: List[str] = []
+    fields: List[FieldResponse] = []
+    created: str
+    updated: str
 
     class Config:
         from_attributes = True
 
 
-# ─── List Response Schema ───
-
 class CollectionListResponse(BaseModel):
-    """Paginated list of Collections."""
-
+    """Paginated list of collections."""
     items: List[CollectionResponse]
-    page: int = Field(..., ge=1)
-    per_page: int = Field(..., ge=1, le=500)
-    total_items: int = Field(..., ge=0)
-    total_pages: int = Field(..., ge=0)
+    page: int
+    per_page: int
+    total_items: int
+    total_pages: int
 
 
-# ─── PocketBase JSON Schema (for creating the collection itself!) ───
+# ─── Field Operations ───────────────────────────────────────────
 
-def get_collection_pb_schema() -> dict:
-    """
-    Returns the PocketBase collection schema JSON for 'collections'.
+class FieldAddRequest(BaseModel):
+    """Schema for adding a single field to an existing collection."""
+    field: FieldDefinition
 
-    Aina-chan made this so Senpai can use it with
-    PageCollectionManager-style initialization! ✨
 
-    The security field uses PocketBase's built-in API rules
-    so Senpai doesn't have to reinvent the wheel~ (◕‿◕✿)
-    """
-    return {
-        "name": "collections",
-        "type": "base",
-        "listRule": "",        # Public read by default
-        "viewRule": "",
-        "createRule": "@request.auth.id != ''",
-        "updateRule": "@request.auth.id != ''",
-        "deleteRule": None,     # Superuser only
-        "indexes": [
-            "CREATE UNIQUE INDEX `idx_collections_slug` ON `collections` (`slug`)",
-        ],
-        "fields": [
-            # ── Core ──
-            {
-                "name": "title",
-                "type": "text",
-                "required": True,
-                "min": 1,
-                "max": 200,
-            },
-            {
-                "name": "slug",
-                "type": "text",
-                "required": True,
-                "min": 1,
-                "max": 200,
-                "pattern": "^[a-z0-9\\-]+$",
-            },
-            {
-                "name": "desc",
-                "type": "text",
-                "required": False,
-                "max": 1000,
-            },
+class FieldRemoveRequest(BaseModel):
+    """Schema for removing a field from a collection."""
+    field_name: str = Field(..., description="Name of the field to remove")
 
-            # ── Classification ──
-            {
-                "name": "labels",
-                "type": "json",
-                "required": False,
-            },
-            {
-                "name": "tags",
-                "type": "json",
-                "required": False,
-            },
-            {
-                "name": "security",
-                "type": "json",
-                "required": False,
-            },
 
-            # ── Behavior ──
-            {
-                "name": "sort_order",
-                "type": "number",
-                "required": False,
-                "noDecimal": True,
-                "min": 0,
-            },
+# ─── Schema Validation Response ─────────────────────────────────
 
-            # ── Extensibility ──
-            {
-                "name": "custom",
-                "type": "json",
-                "required": False,
-            },
-
-            # ── Timestamps ──
-            {
-                "name": "created",
-                "type": "autodate",
-                "onCreate": True,
-                "onUpdate": False,
-            },
-            {
-                "name": "updated",
-                "type": "autodate",
-                "onCreate": True,
-                "onUpdate": True,
-            },
-        ],
-    }
+class SchemaValidationResponse(BaseModel):
+    """Results of schema validation."""
+    valid: bool
+    warnings: List[str] = []
+    errors: List[str] = []

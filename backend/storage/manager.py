@@ -1,67 +1,26 @@
 import os
-from typing import Optional
+import re
+from typing import Optional, List
 from pocketbase import PocketBase
-from pocketbase.client import FileUpload
-from util.secrets import SecretsManager
+from backend.util.secrets import SecretsManager
 
 
-class PageCollectionManager:
+class StorageManager:
     """
-    Aina-chan's PocketBase Page Collection Manager! (◕‿◕✿)
+    Aina-chan's Storage Manager! (◕‿◕✿)
 
-    Handles initialization and CRUD for the 'pages' collection.
+    Fully self-contained module for the 'storage' collection.
+    Tracks metadata of all files and media uploaded to Anita-CMS.
+
+    This can be deleted without breaking anything else!
     """
 
-    def __init__(
-        self,
-        pb_url: Optional[str] = None,
-        admin_email: Optional[str] = None,
-        admin_password: Optional[str] = None,
-    ):
-        """
-        Initialize the manager with PocketBase connection.
-
-        Falls back to SecretsManager if credentials aren't provided directly!
-        """
-        # Load secrets from the manager
-        self._secrets = SecretsManager()
-
-        # Use provided values, or fall back to secrets.json
-        self.pb_url = pb_url or self._secrets.pocketbase_url
-        self.admin_email = admin_email or self._secrets.admin_email
-        self.admin_password = admin_password or self._secrets.admin_password
-
-        self.client = PocketBase(self.pb_url)
-        self._is_authenticated = False
-
-    # --- Authentication ---
-
-    def authenticate_admin(self) -> bool:
-        """Authenticate as superadmin for collection management."""
-        if not self.admin_email or not self.admin_password:
-            raise ValueError(
-                "Aina-chan needs admin email and password to manage collections! ⊙﹏⊙"
-            )
-
-        try:
-            self.client.admins.auth_with_password(
-                self.admin_email,
-                self.admin_password,
-            )
-            self._is_authenticated = True
-            return True
-        except Exception as e:
-            print(f"Aina-chan couldn't authenticate! Error: {e} (╥﹏╥)")
-            self._is_authenticated = False
-            return False
-
-    # --- Collection Schema ---
+    COLLECTION_NAME = "storage"
 
     @property
-    def _page_schema(self) -> dict:
-        """The full schema for the 'pages' collection."""
+    def _collection_schema(self) -> dict:
         return {
-            "name": "pages",
+            "name": self.COLLECTION_NAME,
             "type": "base",
             "listRule": "",
             "viewRule": "",
@@ -69,208 +28,306 @@ class PageCollectionManager:
             "updateRule": "@request.auth.id != ''",
             "deleteRule": None,
             "indexes": [
-                "CREATE UNIQUE INDEX `idx_pages_slug` ON `pages` (`slug`)"
+                "CREATE UNIQUE INDEX `idx_storage_slug` ON `storage` (`slug`)",
+                "CREATE INDEX `idx_storage_folder` ON `storage` (`folder`)",
+                "CREATE INDEX `idx_storage_mime` ON `storage` (`mime_type`)",
+                "CREATE INDEX `idx_storage_public` ON `storage` (`is_public`)",
             ],
             "fields": [
-                {
-                    "name": "title",
-                    "type": "text",
-                    "required": True,
-                    "min": 1,
-                    "max": 200,
-                },
-                {
-                    "name": "slug",
-                    "type": "text",
-                    "required": True,
-                    "min": 1,
-                    "max": 200,
-                    "pattern": "^[a-z0-9\\-]+$",
-                },
-                {
-                    "name": "desc",
-                    "type": "text",
-                    "required": False,
-                    "max": 500,
-                },
-                {
-                    "name": "content_id",
-                    "type": "text",
-                    "required": False,
-                },
-                {
-                    "name": "thumb",
-                    "type": "file",
-                    "required": False,
-                    "maxSelect": 1,
-                    "maxSize": 5_242_880,
-                    "mimeTypes": [
-                        "image/jpeg",
-                        "image/png",
-                        "image/webp",
-                    ],
-                },
-                {
-                    "name": "labels",
-                    "type": "json",
-                    "required": False,
-                },
-                {
-                    "name": "tags",
-                    "type": "json",
-                    "required": False,
-                },
-                {
-                    "name": "enabled",
-                    "type": "bool",
-                    "required": False,
-                },
-                {
-                    "name": "sort_order",
-                    "type": "number",
-                    "required": False,
-                    "noDecimal": True,
-                    "min": 0,
-                },
-                {
-                    "name": "custom",
-                    "type": "json",
-                    "required": False,
-                },
-                {
-                    "name": "created",
-                    "type": "autodate",
-                    "onCreate": True,
-                    "onUpdate": False,
-                },
-                {
-                    "name": "updated",
-                    "type": "autodate",
-                    "onCreate": True,
-                    "onUpdate": True,
-                },
+                {"name": "name", "type": "text", "required": True, "min": 1, "max": 255},
+                {"name": "slug", "type": "text", "required": True, "min": 1, "max": 255, "pattern": "^[a-zA-Z0-9_\\-\\.\\/]+$"},
+                {"name": "mime_type", "type": "text", "required": True, "max": 100},
+                {"name": "size", "type": "number", "required": True, "noDecimal": True, "min": 0},
+                {"name": "width", "type": "number", "required": False, "noDecimal": True, "min": 0},
+                {"name": "height", "type": "number", "required": False, "noDecimal": True, "min": 0},
+                {"name": "duration", "type": "number", "required": False, "min": 0},
+                {"name": "alt_text", "type": "text", "required": False, "max": 500},
+                {"name": "caption", "type": "text", "required": False, "max": 1000},
+                {"name": "folder", "type": "text", "required": False, "max": 200},
+                {"name": "labels", "type": "json", "required": False},
+                {"name": "tags", "type": "json", "required": False},
+                {"name": "uploaded_by", "type": "text", "required": False, "max": 100},
+                {"name": "checksum", "type": "text", "required": False, "max": 64},
+                {"name": "is_public", "type": "bool", "required": False},
+                {"name": "custom", "type": "json", "required": False},
+                {"name": "created", "type": "autodate", "onCreate": True, "onUpdate": False},
+                {"name": "updated", "type": "autodate", "onCreate": True, "onUpdate": True},
             ],
         }
 
-    # --- Collection Initialization ---
+    # ─── Initialization ───────────────────────────────────────
+
+    def __init__(self, pb_url=None, admin_email=None, admin_password=None):
+        self._secrets = SecretsManager()
+        self.pb_url = pb_url or self._secrets.pocketbase_url
+        self.admin_email = admin_email or self._secrets.admin_email
+        self.admin_password = admin_password or self._secrets.admin_password
+        self.client = PocketBase(self.pb_url)
+        self._is_authenticated = False
+
+    def authenticate_admin(self) -> bool:
+        if not self.admin_email or not self.admin_password:
+            raise ValueError("Aina-chan needs admin email and password! ⊙﹏⊙")
+        try:
+            self.client.admins.auth_with_password(self.admin_email, self.admin_password)
+            self._is_authenticated = True
+            return True
+        except Exception as e:
+            print(f"Aina-chan couldn't authenticate! Error: {e} (╥﹏╥)")
+            self._is_authenticated = False
+            return False
 
     def ensure_collection_exists(self) -> bool:
-        """Check if 'pages' collection exists, create if not."""
+        """Create the storage collection if it doesn't exist."""
         if not self._is_authenticated:
             if not self.authenticate_admin():
                 return False
-
         try:
             try:
-                self.client.collections.get_one("pages")
+                self.client.collections.get_one(self.COLLECTION_NAME)
                 return True
             except Exception:
-                self.client.collections.create(self._page_schema)
-                print("Aina-chan created the 'pages' collection! ✨")
+                self.client.collections.create(self._collection_schema)
+                print("Aina-chan created the 'storage' collection! ✨")
                 return True
         except Exception as e:
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False
 
-    # --- CRUD Operations ---
+    # ─── CRUD ─────────────────────────────────────────────────
 
-    def create_page(self, data: dict) -> Optional[dict]:
-        """Create a new page record."""
+    def create_record(self, data: dict) -> Optional[dict]:
+        """Create a new storage metadata record."""
         try:
-            return self.client.collections.create("pages", data)
+            return self.client.collections.create(self.COLLECTION_NAME, data)
         except Exception as e:
-            print(f"Aina-chan couldn't create the page! Error: {e} (╥﹏╥)")
+            print(f"Aina-chan couldn't create storage record! Error: {e} (╥﹏╥)")
             return None
 
-    def get_page(self, page_id: str) -> Optional[dict]:
-        """Get a single page by its ID."""
+    def get_record(self, record_id: str) -> Optional[dict]:
         try:
-            return self.client.collections.get_one("pages", page_id)
-        except Exception as e:
-            print(f"Aina-chan couldn't find that page! Error: {e} (╥﹏╥)")
+            return self.client.collections.get_one(self.COLLECTION_NAME, record_id)
+        except Exception:
             return None
 
-    def get_page_by_slug(self, slug: str) -> Optional[dict]:
-        """Get a single page by its slug."""
+    def get_record_by_slug(self, slug: str) -> Optional[dict]:
         try:
             result = self.client.collections.get_list(
-                "pages",
-                query_params={
-                    "filter": f'slug = "{slug}"',
-                    "limit": 1,
-                },
+                self.COLLECTION_NAME,
+                query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
             items = result.get("items", [])
             return items[0] if items else None
-        except Exception as e:
-            print(f"Aina-chan couldn't find that page! Error: {e} (╥﹏╥)")
+        except Exception:
             return None
 
-    def update_page(self, page_id: str, data: dict) -> Optional[dict]:
-        """Update an existing page record."""
+    def update_record(self, record_id: str, data: dict) -> Optional[dict]:
         try:
-            return self.client.collections.update("pages", page_id, data)
+            return self.client.collections.update(self.COLLECTION_NAME, record_id, data)
         except Exception as e:
-            print(f"Aina-chan couldn't update the page! Error: {e} (╥﹏╥)")
+            print(f"Aina-chan couldn't update storage record! Error: {e} (╥﹏╥)")
             return None
 
-    def delete_page(self, page_id: str) -> bool:
-        """Delete a page by its ID."""
+    def delete_record(self, record_id: str) -> bool:
         try:
-            self.client.collections.delete("pages", page_id)
+            self.client.collections.delete(self.COLLECTION_NAME, record_id)
             return True
         except Exception as e:
-            print(f"Aina-chan couldn't delete the page! Error: {e} (╥﹏╥)")
+            print(f"Aina-chan couldn't delete storage record! Error: {e} (╥﹏╥)")
             return False
 
-    def list_pages(
+    # ─── Listing with Filters ─────────────────────────────────
+
+    def list_records(
         self,
         page: int = 1,
         per_page: int = 20,
-        sort: str = "-sort_order",
-        filter: Optional[str] = None,
+        sort: str = "-created",
+        folder: Optional[str] = None,
+        mime_type: Optional[str] = None,
+        mime_category: Optional[str] = None,
+        is_public: Optional[bool] = None,
+        label: Optional[str] = None,
+        tag: Optional[str] = None,
+        search: Optional[str] = None,
+        uploaded_by: Optional[str] = None,
     ) -> dict:
-        """List pages with pagination, sorting, and filtering."""
+        filters = []
+
+        if folder is not None:
+            filters.append(f'folder = "{folder}"')
+        if mime_type:
+            filters.append(f'mime_type = "{mime_type}"')
+        if mime_category:
+            filters.append(f'mime_type ~ "{mime_category}"')
+        if is_public is not None:
+            filters.append(f"is_public = {str(is_public).lower()}")
+        if label:
+            filters.append(f'labels ~ "{label}"')
+        if tag:
+            filters.append(f'tags ~ "{tag}"')
+        if uploaded_by:
+            filters.append(f'uploaded_by = "{uploaded_by}"')
+        if search:
+            filters.append(f'(name ~ "{search}" || caption ~ "{search}" || alt_text ~ "{search}")')
+
+        filter_str = " && ".join(filters) if filters else None
+
         try:
-            params = {
-                "page": page,
-                "perPage": per_page,
-                "sort": sort,
-            }
-            if filter:
-                params["filter"] = filter
-
-            return self.client.collections.get_list(
-                "pages",
-                query_params=params,
-            )
+            params = {"page": page, "perPage": per_page, "sort": sort}
+            if filter_str:
+                params["filter"] = filter_str
+            return self.client.collections.get_list(self.COLLECTION_NAME, query_params=params)
         except Exception as e:
-            print(f"Aina-chan couldn't list pages! Error: {e} (╥﹏╥)")
-            return {
-                "items": [],
-                "page": page,
-                "perPage": per_page,
-                "totalItems": 0,
-                "totalPages": 0,
-            }
+            print(f"Aina-chan couldn't list storage records! Error: {e} (╥﹏╥)")
+            return {"items": [], "page": page, "perPage": per_page, "totalItems": 0, "totalPages": 0}
 
-    # --- Convenience: Upload Thumbnail ---
+    # ─── Slug Utilities ───────────────────────────────────────
 
-    def upload_thumbnail(self, page_id: str, file_path: str) -> Optional[dict]:
-        """Upload a thumbnail image for a page."""
+    def slug_exists(self, slug: str, exclude_id: Optional[str] = None) -> bool:
         try:
-            with open(file_path, "rb") as f:
-                file_upload = FileUpload(
-                    filename=os.path.basename(file_path),
-                    data=f.read(),
-                    content_type="image/jpeg",
-                )
-
-            return self.client.collections.update(
-                "pages",
-                page_id,
-                {"thumb": file_upload},
+            result = self.client.collections.get_list(
+                self.COLLECTION_NAME,
+                query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
-        except Exception as e:
-            print(f"Aina-chan couldn't upload the thumbnail! Error: {e} (╥﹏╥)")
-            return None
+            items = result.get("items", [])
+            if not items:
+                return False
+            if exclude_id:
+                return items[0]["id"] != exclude_id
+            return True
+        except Exception:
+            return False
+
+    def generate_slug(self, filename: str, folder: str = "") -> str:
+        """Generate a unique storage slug from filename."""
+        base, ext = os.path.splitext(filename)
+        base = base.lower()
+        base = re.sub(r'[^a-z0-9_\-]', '-', base)
+        base = re.sub(r'-+', '-', base).strip('-')
+        slug_base = f"{folder}/{base}{ext}".lstrip("/") if folder else f"{base}{ext}"
+        return slug_base
+
+    def generate_unique_slug(self, filename: str, folder: str = "") -> str:
+        base_slug = self.generate_slug(filename, folder)
+        slug = base_slug
+        counter = 1
+        while self.slug_exists(slug):
+            name, ext = os.path.splitext(base_slug)
+            slug = f"{name}-{counter}{ext}"
+            counter += 1
+        return slug
+
+    # ─── Folder Operations ────────────────────────────────────
+
+    def list_folders(self) -> List[str]:
+        """Get a list of all unique folder paths used in storage."""
+        try:
+            result = self.client.collections.get_list(
+                self.COLLECTION_NAME,
+                query_params={"perPage": 500, "fields": "folder"},
+            )
+            folders = set()
+            for item in result.get("items", []):
+                f = item.get("folder")
+                if f:
+                    folders.add(f)
+            return sorted(folders)
+        except Exception:
+            return []
+
+    def get_folder_contents(
+        self,
+        folder: str,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> dict:
+        """Get all records within a specific folder."""
+        return self.list_records(page=page, per_page=per_page, folder=folder)
+
+    # ─── MIME Type Helpers ────────────────────────────────────
+
+    @staticmethod
+    def get_mime_category(mime_type: str) -> str:
+        """Get the broad category of a MIME type."""
+        if mime_type.startswith("image/"): 
+            return "image"
+        if mime_type.startswith("video/"): 
+            return "video"
+        if mime_type.startswith("audio/"): 
+            return "audio"
+        if mime_type.startswith("text/"): 
+            return "document"
+        if mime_type == "application/pdf": 
+            return "document"
+        if "spreadsheet" in mime_type: 
+            return "document"
+        if "presentation" in mime_type: 
+            return "document"
+        if "zip" in mime_type or "rar" in mime_type or "tar" in mime_type: 
+            return "archive"
+        return "other"
+
+    @staticmethod
+    def is_image(mime_type: str) -> bool:
+        return mime_type.startswith("image/")
+
+    @staticmethod
+    def is_video(mime_type: str) -> bool:
+        return mime_type.startswith("video/")
+
+    @staticmethod
+    def is_audio(mime_type: str) -> bool:
+        return mime_type.startswith("audio/")
+
+    @staticmethod
+    def is_document(mime_type: str) -> bool:
+        doc_types = ["text/", "application/pdf", "application/msword",
+                     "application/vnd.openxmlformats-officedocument"]
+        return any(mime_type.startswith(t) for t in doc_types)
+
+    # ─── Stats ─────────────────────────────────────────────────
+
+    def get_stats(self) -> dict:
+        """Get storage statistics, grouped by MIME category."""
+        total = 0
+        total_size = 0
+        image_count = 0
+        video_count = 0
+        audio_count = 0
+        document_count = 0
+        other_count = 0
+
+        try:
+            result = self.client.collections.get_list(
+                self.COLLECTION_NAME,
+                query_params={"perPage": 500, "fields": "mime_type,size"},
+            )
+            for item in result.get("items", []):
+                total += 1
+                total_size += item.get("size", 0)
+                mime = item.get("mime_type", "")
+                cat = self.get_mime_category(mime)
+                if cat == "image": 
+                    image_count += 1
+                elif cat == "video": 
+                    video_count += 1
+                elif cat == "audio": 
+                    audio_count += 1
+                elif cat == "document": 
+                    document_count += 1
+                else: 
+                    other_count += 1
+        except Exception:
+            pass
+
+        return {
+            "total_files": total,
+            "total_size_bytes": total_size,
+            "total_size_mb": round(total_size / (1024 * 1024), 2),
+            "images": image_count,
+            "videos": video_count,
+            "audio": audio_count,
+            "documents": document_count,
+            "other": other_count,
+        }
