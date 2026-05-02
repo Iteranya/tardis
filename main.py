@@ -18,7 +18,7 @@ from backend.util.secrets import SecretsManager
 # Delete any import below without breaking the rest!
 
 from backend.pages.router import router as pages_router
-from backend.article.router import router as article_router
+from backend.articles.router import router as article_router
 from backend.site.router import router as site_router
 from backend.collections.router import router as collections_router
 from backend.storage.router import router as storage_router
@@ -104,7 +104,7 @@ def _init_modules():
     the others still work! (◕‿◕✿)
     """
     from backend.pages.service import PageService
-    from backend.article.service import ArticleService
+    from backend.articles.service import ArticleService
     from backend.site.service import SiteService
     from backend.collections.service import CollectionService
     from backend.storage.service import StorageService
