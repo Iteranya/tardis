@@ -4,8 +4,6 @@ Aina-chan's universal PocketBase auth utility! (◕‿◕✿)
 Handles authentication for both PocketBase v0.22.x and v0.23+.
 """
 
-from typing import Optional
-
 
 def authenticate_admin(client, email: str, password: str) -> bool:
     """

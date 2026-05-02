@@ -1,8 +1,5 @@
-import os
-import re
 from typing import Optional, List
 from pocketbase import PocketBase
-from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
 from backend.util.secrets import SecretsManager
 
@@ -115,7 +112,6 @@ class UserManager:
             # Get users collection
             try:
                 users_col = self.client.collections.get_one(self.USERS_COLLECTION)
-                users_id = users_col.id
                 existing_fields = users_col.fields  # Collection object stores fields as list of dicts? Actually it's list[CollectionField] now? Need to see collection.py: `fields: list[dict]` -> yes it's a list of dicts
             except Exception as e:
                 if "CollectionField.__init__()" in str(e) and "help" in str(e):
@@ -124,7 +120,7 @@ class UserManager:
                     )
                     if not result.items:
                         return False
-                    users_id = result.items[0].id
+                    result.items[0].id
                     existing_fields = result.items[0].fields
                 else:
                     raise

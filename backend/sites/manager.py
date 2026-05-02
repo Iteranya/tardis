@@ -4,7 +4,6 @@ from typing import Optional
 from pocketbase import PocketBase
 from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
-from backend.util.pocketbase import collection_exists
 from backend.util.secrets import SecretsManager
 
 

@@ -3,7 +3,6 @@ import re
 from typing import Optional, List
 from pocketbase import PocketBase
 from backend.util.auth import authenticate_admin
-from backend.util.pocketbase import collection_exists
 from backend.util.secrets import SecretsManager
 
 
