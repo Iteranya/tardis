@@ -93,8 +93,8 @@ function setupForm() {
             }
         },
 
-        goToDashboard() {
-            window.location.href = '/admin/dashboard';
+        goToLogin() {
+            window.location.href = '/auth/login';
         },
     };
 }

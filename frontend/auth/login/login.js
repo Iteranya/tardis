@@ -18,7 +18,7 @@ function loginForm() {
             const formData = new FormData(form);
 
             try {
-                const response = await fetch(form.action, {
+                const response = await fetch('/api/auth/login', {  // ← Hardcode the URL
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -29,6 +29,7 @@ function loginForm() {
                         remember: this.remember,
                     }),
                 });
+
 
                 const data = await response.json();
 

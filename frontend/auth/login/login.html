@@ -18,9 +18,6 @@
     </div>
 
     <form class="space-y-6"
-          hx-post="/api/auth/login"
-          hx-target="this"
-          hx-swap="outerHTML"
           @submit.prevent="handleLogin($event)">
 
         <!-- Email -->
