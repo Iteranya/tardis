@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 64" fill="none">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ec4899;stop-color:#ec4899" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-color:#8b5cf6" />
+    </linearGradient>
+  </defs>
+  <!-- Crystal icon -->
+  <path d="M24 4L12 20L24 17L36 20L24 4Z" fill="url(#grad)"/>
+  <path d="M24 17L12 20L18 31L24 27L30 31L36 20L24 17Z" fill="url(#grad)" opacity="0.8"/>
+  <path d="M24 27L18 31L21 39L24 36L27 39L30 31L24 27Z" fill="url(#grad)" opacity="0.6"/>
+  <!-- Text -->
+  <text x="48" y="30" font-family="system-ui, sans-serif" font-size="22" font-weight="700" fill="#1f2937">Anita</text>
+  <text x="48" y="48" font-family="system-ui, sans-serif" font-size="14" font-weight="500" fill="#9ca3af">CMS</text>
+</svg>

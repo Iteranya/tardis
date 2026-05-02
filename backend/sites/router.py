@@ -1,13 +1,14 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from backend.site.service import SiteService
-from backend.site.schema import (
+from backend.sites.service import SiteService
+from backend.sites.schema import (
     SiteCreate,
     SiteUpdate,
     SiteResponse,
     SiteSummaryListResponse,
 )
-import os, tempfile
+import os
+import tempfile
 
 router = APIRouter(
     prefix="/sites",

@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from backend.article.service import ArticleService
-from backend.article.schema import (
+from backend.articles.service import ArticleService
+from backend.articles.schema import (
     ArticleCreate,
     ArticleUpdate,
     ArticleResponse,

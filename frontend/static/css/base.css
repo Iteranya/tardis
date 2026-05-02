@@ -1,0 +1,66 @@
+/* Anita-CMS Base Styles */
+
+/* Tailwind CDN is loaded in HTML, this is for overrides */
+
+/* Smooth scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Better focus styles for accessibility */
+:focus-visible {
+    outline: 2px solid #ec4899;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+/* Alpine.js cloak (prevents flash of unstyled content) */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Transitions for Alpine.js */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+/* Slide transitions */
+.slide-enter-active,
+.slide-leave-active {
+    transition: all 0.3s ease;
+}
+
+.slide-enter-from {
+    transform: translateX(-10px);
+    opacity: 0;
+}
+
+.slide-leave-to {
+    transform: translateX(10px);
+    opacity: 0;
+}

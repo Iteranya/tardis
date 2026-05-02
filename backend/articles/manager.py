@@ -84,25 +84,29 @@ class ArticleManager:
             print(f"Aina-chan couldn't authenticate! Error: {e} (╥﹏╥)")
             self._is_authenticated = False
             return False
-
     def ensure_collection_exists(self) -> bool:
-        """Check if collection exists, create if not.
-
-        Aina-chan's robust approach: if creation fails because
-        the collection already exists, that's fine too! (◕‿◕✿)
-        """
         if not self._is_authenticated:
             if not self.authenticate_admin():
                 return False
 
         try:
-            # Try to create the collection
+            # Check if collection already exists
+            try:
+                self.client.collections.get_one(self.COLLECTION_NAME)
+                return True
+            except Exception as e:
+                error_msg = str(e)
+                # If the error is just SDK parsing (CollectionField 'help'), that's fine!
+                if "CollectionField.__init__()" in error_msg and "help" in error_msg:
+                    # Collection exists! SDK just can't parse the response.
+                    return True
+
+            # Try to create it
             self.client.collections.create(self._collection_schema)
             print(f"Aina-chan created the '{self.COLLECTION_NAME}' collection! ✨")
             return True
 
         except Exception as e:
-            # Check if the error is "name already exists" — that's okay!
             error_data = getattr(e, 'data', {})
             if isinstance(error_data, dict):
                 data_field = error_data.get('data', {})
@@ -110,7 +114,12 @@ class ArticleManager:
                     name_error = data_field.get('name', {})
                     if isinstance(name_error, dict):
                         if name_error.get('code') == 'validation_collection_name_exists':
-                            return True  # ✅ Already exists! All good!
+                            return True
+
+            # Check for SDK parsing errors
+            error_msg = str(e)
+            if "CollectionField.__init__()" in error_msg and "help" in error_msg:
+                return True
 
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False

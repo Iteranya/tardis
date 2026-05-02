@@ -1,21 +1,70 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+import os
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi import HTTPException, Depends, Header
 from backend.auth.service import AuthService
 from backend.auth.schema import (
     LoginRequest,
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
-    SetupInitializeRequest,
-    SetupInitializeResponse,
+    SaveCredentialsRequest,
     TestConnectionRequest,
     TestConnectionResponse,
     MeResponse,
+    ValidateCredentialsRequest,
+)
+from backend.util.initializer import initialize_all_modules
+from backend.util.secrets import SecretsManager
+
+
+# ─── Template Setup ───
+templates = Jinja2Templates(directory="frontend")
+
+
+# ─── Helper: Check if setup is needed ───
+
+def _setup_required() -> bool:
+    """
+    Returns True if the system hasn't been configured yet.
+    Redirects to /auth/setup in those cases.
+    """
+    secrets = SecretsManager()
+
+    # No credentials at all?
+    if not secrets.is_configured:
+        return True
+
+    # Still using default PocketBase URL?
+    if secrets.pocketbase_url == "http://127.0.0.1:8090":
+        # Check if admin email is still empty (means default/unconfigured)
+        if not secrets.admin_email:
+            return True
+
+    return False
+
+
+def _maybe_redirect_to_setup(request: Request):
+    """Redirect to /auth/setup if system isn't configured yet."""
+    if _setup_required():
+        # Don't redirect if already on setup page
+        if not request.url.path.startswith("/auth/setup"):
+            return RedirectResponse(url="/auth/setup")
+    return None
+
+
+# ─── API Router ───
+api_router = APIRouter(
+    prefix="/api",
+    tags=["Auth API"],
 )
 
 
-router = APIRouter(
-    prefix="/api",
-    tags=["Auth"],
+# ─── Page Router (serves HTML) ───
+page_router = APIRouter(
+    prefix="/auth",
+    tags=["Auth Pages"],
 )
 
 
@@ -23,9 +72,76 @@ def get_service() -> AuthService:
     return AuthService()
 
 
-# ─── Setup Routes ───
+# ═══════════════════════════════════════════════
+#  📄 PAGE ROUTES — Serve the HTML UI
+# ═══════════════════════════════════════════════
 
-@router.post("/setup/test-connection", response_model=TestConnectionResponse)
+@page_router.get("", response_class=HTMLResponse)
+@page_router.get("/", response_class=HTMLResponse)
+async def auth_index(request: Request):
+    """Redirect to login or setup based on configuration."""
+    # Check if setup is needed
+    redirect = _maybe_redirect_to_setup(request)
+    if redirect:
+        return redirect
+
+    return templates.TemplateResponse(
+        "auth/login/login.html",
+        {"request": request},
+    )
+
+
+@page_router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Render the login page. Redirects to setup if not configured."""
+    redirect = _maybe_redirect_to_setup(request)
+    if redirect:
+        return redirect
+
+    return templates.TemplateResponse(
+        "auth/login/login.html",
+        {"request": request},
+    )
+
+
+@page_router.get("/register", response_class=HTMLResponse)
+async def register_page(request: Request):
+    """Render the register page. Redirects to setup if not configured."""
+    redirect = _maybe_redirect_to_setup(request)
+    if redirect:
+        return redirect
+
+    return templates.TemplateResponse(
+        "auth/register/register.html",
+        {"request": request},
+    )
+
+
+@page_router.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request):
+    """Render the setup wizard. Always accessible."""
+    # If already configured, show a message but still let them in
+    if not _setup_required():
+        # They can still access setup, but we'll pass a flag
+        return templates.TemplateResponse(
+            "auth/setup/setup.html",
+            {
+                "request": request,
+                "already_configured": True,
+            },
+        )
+
+    return templates.TemplateResponse(
+        "auth/setup/setup.html",
+        {"request": request},
+    )
+
+
+# ═══════════════════════════════════════════════
+#  🔌 SETUP API ROUTES — Each does ONE thing
+# ═══════════════════════════════════════════════
+
+@api_router.post("/setup/test-connection", response_model=TestConnectionResponse)
 async def test_connection(
     data: TestConnectionRequest,
     service: AuthService = Depends(get_service),
@@ -34,35 +150,72 @@ async def test_connection(
     return service.test_connection(data.url)
 
 
-@router.post("/setup/initialize", response_model=SetupInitializeResponse)
-async def initialize_system(
-    data: SetupInitializeRequest,
+@api_router.post("/setup/validate-credentials")
+async def validate_credentials(
+    data: ValidateCredentialsRequest,
     service: AuthService = Depends(get_service),
 ):
+    """Check if the provided credentials can log in to PocketBase.
+
+    Does NOT save anything. Just validates.
     """
-    Initialize Anita-CMS for the first time.
+    service.manager.pb_url = data.url
 
-    This will:
-    1. Test the PocketBase connection
-    2. Create the superadmin account
-    3. Initialize all collections
-    4. Create the initial site/home page
+    try:
+        auth_data = service.manager.login_superuser(data.email, data.password)
+        return {
+            "ok": True,
+            "message": "Credentials are valid!",
+            "user": {
+                "id": auth_data.get("record", {}).get("id", ""),
+                "email": auth_data.get("record", {}).get("email", ""),
+            },
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid credentials: {str(e)}",
+        )
+
+
+@api_router.post("/setup/save-credentials")
+async def save_credentials(
+    data: SaveCredentialsRequest,
+):
+    """Save PocketBase credentials to secrets.json. ONLY saves, nothing else."""
+    from backend.util.secrets import SecretsManager
+    secrets = SecretsManager()
+    secrets.set("pocketbase.url", data.url, save=False)
+    secrets.set("pocketbase.admin_email", data.email, save=False)
+    secrets.set("pocketbase.admin_password", data.password, save=True)
+    return {"ok": True, "message": "Credentials saved to secrets.json."}
+
+
+
+
+@api_router.post("/setup/initialize-collections")
+async def initialize_collections():
+    """Initialize all system collections in PocketBase.
+
+    Uses the same logic as startup init, but can be called
+    on-demand from the setup wizard.
     """
-    return service.initialize(data)
+    print("  🔧 Running on-demand collection initialization...")
+    results = initialize_all_modules()
 
+    all_ok = all(v == "✅" for v in results.values())
+    return {
+        "ok": all_ok,
+        "results": results,
+        "message": "All collections initialized!" if all_ok else "Some collections had issues.",
+    }
 
-# ─── Auth Routes ───
-
-@router.post("/auth/login", response_model=LoginResponse)
+@api_router.post("/auth/login", response_model=LoginResponse)
 async def login(
     data: LoginRequest,
     service: AuthService = Depends(get_service),
 ):
-    """
-    Authenticate a user.
-
-    Tries superuser first, then regular user.
-    """
+    """Authenticate a user."""
     result = service.login(data)
     if not result:
         raise HTTPException(
@@ -72,7 +225,7 @@ async def login(
     return result
 
 
-@router.post("/auth/register", response_model=RegisterResponse)
+@api_router.post("/auth/register", response_model=RegisterResponse)
 async def register(
     data: RegisterRequest,
     service: AuthService = Depends(get_service),
@@ -86,7 +239,7 @@ async def register(
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 
-@router.get("/auth/me", response_model=MeResponse)
+@api_router.get("/auth/me", response_model=MeResponse)
 async def get_me(
     authorization: str = Header(None),
     service: AuthService = Depends(get_service),
@@ -95,7 +248,6 @@ async def get_me(
     if not authorization:
         raise HTTPException(status_code=401, detail="Not authenticated.")
 
-    # Extract token from "Bearer <token>"
     token = authorization.replace("Bearer ", "").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Invalid token.")
@@ -107,13 +259,11 @@ async def get_me(
     return result
 
 
-@router.post("/auth/logout")
+@api_router.post("/auth/logout")
 async def logout():
-    """
-    Logout the current user.
-
-    Note: PocketBase uses JWT tokens, so logout is handled
-    client-side by removing the token. This endpoint exists
-    for API completeness.
-    """
+    """Logout the current user."""
     return {"ok": True, "message": "Logged out successfully."}
+
+
+# ─── Export both routers ───
+__all__ = ["api_router", "page_router"]

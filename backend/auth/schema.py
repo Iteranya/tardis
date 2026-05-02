@@ -80,3 +80,16 @@ class UserResponse(BaseModel):
 class MeResponse(BaseModel):
     user: UserResponse
     is_superuser: bool = False
+
+class SaveCredentialsRequest(BaseModel):
+    url: str
+    email: str
+    password: str
+
+class ValidateCredentialsRequest(BaseModel):
+    url: str
+    email: str
+    password: str
+
+
+

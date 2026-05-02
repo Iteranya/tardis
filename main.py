@@ -9,7 +9,9 @@ import getpass
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from backend.util.initializer import initialize_all_modules
 from backend.util.secrets import SecretsManager
 
 
@@ -22,7 +24,8 @@ from backend.sites.router import router as site_router
 from backend.collections.router import router as collections_router
 from backend.storage.router import router as storage_router
 from backend.users.router import router as users_router
-from backend.auth.router import router as auth_router
+from backend.auth.router import api_router as auth_api_router
+from backend.auth.router import page_router as auth_page_router
 
 
 # ─── Credential Setup ─────────────────────────────────────────
@@ -102,7 +105,7 @@ async def lifespan(app: FastAPI):
 
     # Step 2: Initialize collections ONLY if credentials are configured
     if secrets.is_configured:
-        _init_modules()
+        initialize_all_modules()  # ← Shared!
     else:
         print("  ⏭️  Skipping collection initialization")
         print("  💡  Complete setup at /auth/setup to initialize")
@@ -110,41 +113,6 @@ async def lifespan(app: FastAPI):
     yield  # App runs here
 
     print("🌙 Anita-CMS is shutting down...")
-
-
-def _init_modules():
-    """
-    Initialize all module collections at startup.
-
-    Aina-chan tries each one independently so if one fails,
-    the others still work! (◕‿◕✿)
-    """
-    from backend.pages.service import PageService
-    from backend.articles.service import ArticleService
-    from backend.sites.service import SiteService
-    from backend.collections.service import CollectionService
-    from backend.storage.service import StorageService
-    from backend.users.service import UserService
-
-    init_tasks = [
-        ("Pages", lambda: PageService().initialize()),
-        ("Articles", lambda: ArticleService().initialize()),
-        ("Sites", lambda: SiteService().initialize()),
-        ("Collections", lambda: CollectionService().initialize()),
-        ("Storage", lambda: StorageService().initialize()),
-        ("Users", lambda: UserService().initialize()),
-    ]
-
-    for name, task in init_tasks:
-        try:
-            result = task()
-            status = "✅" if result else "❌"
-            print(f"  {status} {name}")
-        except Exception as e:
-            print(f"  ❌ {name} — {e}")
-
-    print()  # Empty line for readability
-
 
 # ─── App Instance ──────────────────────────────────────────────
 
@@ -189,7 +157,13 @@ app.add_middleware(
 # Each module is 100% independent!
 # Delete any line below without breaking the rest!
 
-app.include_router(auth_router)         
+# Auth pages first
+app.include_router(auth_page_router)
+app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
+
+# Auth API
+app.include_router(auth_api_router)  
 app.include_router(pages_router)
 app.include_router(article_router)
 app.include_router(site_router)

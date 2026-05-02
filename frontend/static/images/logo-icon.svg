@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- A cute sparkle/crystal icon representing Anita-CMS -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ec4899;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <path d="M32 4L16 28L32 24L48 28L32 4Z" fill="url(#grad)"/>
+  <path d="M32 24L16 28L24 44L32 38L40 44L48 28L32 24Z" fill="url(#grad)" opacity="0.8"/>
+  <path d="M32 38L24 44L28 56L32 52L36 56L40 44L32 38Z" fill="url(#grad)" opacity="0.6"/>
+  <circle cx="32" cy="32" r="4" fill="white" opacity="0.3"/>
+</svg>

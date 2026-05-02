@@ -1,53 +1,33 @@
 function setupForm() {
     return {
-        // Step management
         step: 1,
         loading: false,
         error: '',
         success: '',
+        setupError: '',
 
-        // Step 1: PocketBase connection
+        // Step 1
         testing: false,
         connectionTested: false,
         connectionOk: false,
         pbVersion: '?',
+        pocketbase: { url: 'http://localhost:8090' },
 
-        pocketbase: {
-            url: 'http://localhost:8090',
-        },
+        // Step 2
+        admin: { email: '', password: '' },
 
-        // Step 2: Admin account
-        admin: {
-            email: '',
-            password: '',
-        },
-
-        // Step 3: Site info
-        site: {
-            name: '',
-            url: '',
-        },
-
-        // Step 4: Results
-        setupError: '',
-
-        // ─── Test PocketBase Connection ───
+        // ─── Test Connection ───
         async testConnection() {
             this.testing = true;
             this.error = '';
-            this.connectionTested = false;
 
             try {
                 const response = await fetch('/api/setup/test-connection', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        url: this.pocketbase.url,
-                    }),
+                    body: JSON.stringify({ url: this.pocketbase.url }),
                 });
-
                 const data = await response.json();
-
                 if (response.ok) {
                     this.connectionOk = true;
                     this.pbVersion = data.version || '?';
@@ -55,53 +35,64 @@ function setupForm() {
                     this.connectionOk = false;
                     this.error = data.message || 'Connection failed.';
                 }
-            } catch (err) {
+            } catch {
                 this.connectionOk = false;
-                this.error = 'Cannot reach PocketBase. Check the URL and try again.';
+                this.error = 'Cannot reach PocketBase.';
             } finally {
                 this.testing = false;
                 this.connectionTested = true;
             }
         },
 
-        // ─── Complete Setup ───
+        // ─── Validate Superuser + Init Collections ───
         async completeSetup() {
             this.loading = true;
             this.setupError = '';
-            this.error = '';
 
             try {
-                const response = await fetch('/api/setup/initialize', {
+                // Step A: Validate credentials (just checks if login works)
+                const validateRes = await fetch('/api/setup/validate-credentials', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        pocketbase: this.pocketbase,
-                        admin: this.admin,
-                        site: this.site,
+                        url: this.pocketbase.url,
+                        email: this.admin.email,
+                        password: this.admin.password,
                     }),
                 });
+                const validateData = await validateRes.json();
+                if (!validateRes.ok) throw new Error(validateData.detail || 'Invalid credentials');
 
-                const data = await response.json();
+                // Step B: Save credentials to secrets.json
+                const saveRes = await fetch('/api/setup/save-credentials', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: this.pocketbase.url,
+                        email: this.admin.email,
+                        password: this.admin.password,
+                    }),
+                });
+                const saveData = await saveRes.json();
+                if (!saveRes.ok) throw new Error(saveData.message || 'Failed to save credentials');
 
-                if (response.ok) {
-                    // Store credentials
-                    localStorage.setItem('anita_token', data.token);
-                    localStorage.setItem('anita_url', this.pocketbase.url);
+                // Step C: Initialize collections
+                const initRes = await fetch('/api/setup/initialize-collections', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const initData = await initRes.json();
+                if (!initRes.ok) throw new Error(initData.message);
 
-                    // Move to completion step
-                    this.step = 4;
-                } else {
-                    this.setupError = data.message || 'Setup failed. Please try again.';
-                    // Stay on step 3 but show error
-                }
+                this.step = 3; // Done!
+
             } catch (err) {
-                this.setupError = 'Connection error during setup. Please try again.';
+                this.setupError = err.message || 'Setup failed.';
             } finally {
                 this.loading = false;
             }
         },
 
-        // ─── Go to Dashboard ───
         goToDashboard() {
             window.location.href = '/admin/dashboard';
         },

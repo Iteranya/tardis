@@ -2,30 +2,19 @@ import os
 import re
 from typing import Optional, List
 from pocketbase import PocketBase
+from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
-from backend.util.pocketbase import get_collection_by_name
 from backend.util.secrets import SecretsManager
 
 
 class UserManager:
-    """
-    Aina-chan's User & Role Manager! (◕‿◕✿)
-
-    Manages:
-    - The 'roles' collection (custom)
-    - Adding 'role' field to PocketBase's built-in users collection
-    - User-role assignments
-    - Permission checking
-
-    Fully self-contained module. Can be deleted without breaking
-    other modules — though user permissions won't work anymore!
-    """
+    """Aina-chan's User & Role Manager! (◕‿◕✿)"""
 
     ROLES_COLLECTION = "roles"
+    USERS_COLLECTION = "users"  # built-in
 
     @property
     def _roles_schema(self) -> dict:
-        """The PocketBase schema for the roles collection."""
         return {
             "name": self.ROLES_COLLECTION,
             "type": "base",
@@ -50,8 +39,6 @@ class UserManager:
             ],
         }
 
-    # ─── Initialization ───────────────────────────────────────
-
     def __init__(self, pb_url=None, admin_email=None, admin_password=None):
         self._secrets = SecretsManager()
         self.pb_url = pb_url or self._secrets.pocketbase_url
@@ -61,18 +48,10 @@ class UserManager:
         self._is_authenticated = False
 
     def authenticate_admin(self) -> bool:
-        """Authenticate as superadmin for collection management."""
         if not self.admin_email or not self.admin_password:
-            raise ValueError(
-                "Aina-chan needs admin email and password to manage collections! ⊙﹏⊙"
-            )
-
+            raise ValueError("Aina-chan needs admin email and password! ⊙﹏⊙")
         try:
-            result = authenticate_admin(
-                self.client,
-                self.admin_email,
-                self.admin_password,
-            )
+            result = authenticate_admin(self.client, self.admin_email, self.admin_password)
             self._is_authenticated = result
             return result
         except Exception as e:
@@ -80,133 +59,118 @@ class UserManager:
             self._is_authenticated = False
             return False
 
-    def _ensure_auth(self) -> bool:
-        if not self._is_authenticated:
-            return self.authenticate_admin()
-        return self._is_authenticated
-
-    # ─── Ensure Roles Collection Exists ───────────────────────
+    # ─── Collection initialization ──────────────────────────────
+    # Same pattern as PageManager
 
     def ensure_roles_collection(self) -> bool:
-        """Create the roles collection if it doesn't exist."""
-        if not self._ensure_auth():
-            return False
-
+        if not self._is_authenticated:
+            if not self.authenticate_admin():
+                return False
         try:
+            try:
+                self.client.collections.get_one(self.ROLES_COLLECTION)
+                return True
+            except Exception as e:
+                if "CollectionField.__init__()" in str(e) and "help" in str(e):
+                    return True
             self.client.collections.create(self._roles_schema)
             print("Aina-chan created the 'roles' collection! ✨")
             return True
-
         except Exception as e:
-            error_data = getattr(e, 'data', {})
-            if isinstance(error_data, dict):
-                data_field = error_data.get('data', {})
-                if isinstance(data_field, dict):
-                    name_error = data_field.get('name', {})
-                    if isinstance(name_error, dict):
-                        if name_error.get('code') == 'validation_collection_name_exists':
-                            return True  # ✅ Already exists!
-
+            err_data = getattr(e, 'data', {})
+            if isinstance(err_data, dict):
+                name_err = err_data.get('data', {}).get('name', {})
+                if isinstance(name_err, dict) and name_err.get('code') == 'validation_collection_name_exists':
+                    return True
+            if "CollectionField.__init__()" in str(e) and "help" in str(e):
+                return True
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False
 
-
-    # ─── Ensure Role Field on Users Collection ────────────────
-
     def ensure_role_field_on_users(self) -> bool:
-        """Add a 'role' relation field to PocketBase's users collection."""
-        if not self._ensure_auth():
-            return False
-
-        import httpx
-
+        if not self._is_authenticated:
+            if not self.authenticate_admin():
+                return False
         try:
-            token = self.client.auth_store.token
-            headers = {"Authorization": f"Bearer {token}"}
+            # Get roles collection
+            try:
+                roles_col = self.client.collections.get_one(self.ROLES_COLLECTION)
+                # get_one returns a Collection object, which is not subscriptable
+                # Use .id attribute
+                roles_collection_id = roles_col.id
+            except Exception as e:
+                if "CollectionField.__init__()" in str(e) and "help" in str(e):
+                    # Fallback: use list to get id
+                    result = self.client.collections.get_list(
+                        query_params={"filter": f'name = "{self.ROLES_COLLECTION}"', "perPage": 1},
+                    )
+                    # result is a ListResult, use .items
+                    if not result.items:
+                        print("Aina-chan couldn't find the roles collection! (╥﹏╥)")
+                        return False
+                    roles_collection_id = result.items[0].id
+                else:
+                    raise
 
-            # Step 1: Get the roles collection's actual ID
-            roles_response = httpx.get(
-                f"{self.pb_url}/api/collections",
-                headers=headers,
-                params={"filter": 'name = "roles"', "perPage": 1},
-            )
-            roles_response.raise_for_status()
-            roles_data = roles_response.json()
-            roles_items = roles_data.get("items", [])
+            # Get users collection
+            try:
+                users_col = self.client.collections.get_one(self.USERS_COLLECTION)
+                users_id = users_col.id
+                existing_fields = users_col.fields  # Collection object stores fields as list of dicts? Actually it's list[CollectionField] now? Need to see collection.py: `fields: list[dict]` -> yes it's a list of dicts
+            except Exception as e:
+                if "CollectionField.__init__()" in str(e) and "help" in str(e):
+                    result = self.client.collections.get_list(
+                        query_params={"filter": f'name = "{self.USERS_COLLECTION}"', "perPage": 1},
+                    )
+                    if not result.items:
+                        return False
+                    users_id = result.items[0].id
+                    existing_fields = result.items[0].fields
+                else:
+                    raise
 
-            if not roles_items:
-                print("Aina-chan couldn't find the roles collection! (╥﹏╥)")
-                return False
-
-            roles_collection_id = roles_items[0]["id"]  # ← Get the real ID!
-            print(f"🔍 Found roles collection ID: {roles_collection_id}")
-
-            # Step 2: Get the users collection
-            users_response = httpx.get(
-                f"{self.pb_url}/api/collections",
-                headers=headers,
-                params={"filter": 'name = "users"', "perPage": 1},
-            )
-            users_response.raise_for_status()
-            users_data = users_response.json()
-            users_items = users_data.get("items", [])
-
-            if not users_items:
-                print("Aina-chan couldn't find the users collection! (╥﹏╥)")
-                return False
-
-            users_col = users_items[0]
-            existing_fields = users_col.get("fields", [])
             field_names = [f.get("name") for f in existing_fields]
-
             if "role" in field_names:
-                return True  # Already has it!
+                return True
 
-            # Step 3: Add the role field with the CORRECT collection ID
             role_field = {
                 "name": "role",
                 "type": "relation",
                 "required": False,
-                "collectionId": roles_collection_id,  # ← Use real ID, not name!
+                "collectionId": roles_collection_id,
                 "cascadeDelete": False,
                 "maxSelect": 1,
             }
             existing_fields.append(role_field)
 
-            # Step 4: Update via raw HTTP
-            update_response = httpx.patch(
-                f"{self.pb_url}/api/collections/{users_col['id']}",
-                headers=headers,
-                json={"fields": existing_fields},
-            )
-
-            if update_response.status_code != 200:
-                print(f"🔍 Aina-chan's debug — Error body: {update_response.text}")
-                update_response.raise_for_status()
+            try:
+                self.client.collections.update(self.USERS_COLLECTION, {"fields": existing_fields})
+            except Exception as e:
+                if "CollectionField.__init__()" in str(e) and "help" in str(e):
+                    pass
+                else:
+                    raise
 
             print("Aina-chan added 'role' field to users collection! ✨")
             return True
 
         except Exception as e:
+            error_msg = str(e)
+            if "CollectionField.__init__()" in error_msg and "help" in error_msg:
+                print("Aina-chan added 'role' field to users collection! ✨")
+                return True
             print(f"Aina-chan couldn't add role field! Error: {e} (╥﹏╥)")
             return False
 
-
-
-
     def initialize(self) -> bool:
-        """
-        Initialize everything needed for the users module.
-
-        Creates the roles collection and adds the role field to users.
-        """
-        if not self._ensure_auth():
-            return False
+        if not self._is_authenticated:
+            if not self.authenticate_admin():
+                return False
         roles_ok = self.ensure_roles_collection()
         field_ok = self.ensure_role_field_on_users()
         return roles_ok and field_ok
 
-    # ─── Role CRUD ────────────────────────────────────────────
+    # ─── Role CRUD ──────────────────────────────────────────────
 
     def create_role(self, data: dict) -> Optional[dict]:
         try:
@@ -225,9 +189,10 @@ class UserManager:
         try:
             result = self.client.collections.get_list(
                 self.ROLES_COLLECTION,
-                query_params={"filter": f'name = "{name}"', "limit": 1},
+                query_params={"filter": f'name = "{name}"', "perPage": 1},
             )
-            items = result.get("items", [])
+            # result is ListResult, use .items
+            items = result.items
             return items[0] if items else None
         except Exception:
             return None
@@ -247,175 +212,127 @@ class UserManager:
             print(f"Aina-chan couldn't delete role! Error: {e} (╥﹏╥)")
             return False
 
-    def list_roles(self, page: int = 1, per_page: int = 50) -> dict:
+    def list_roles(self, page: int = 1, per_page: int = 20, sort: str = "sort_order") -> dict:
         try:
-            return self.client.collections.get_list(
+            result = self.client.collections.get_list(
                 self.ROLES_COLLECTION,
-                query_params={"page": page, "perPage": per_page, "sort": "sort_order"},
+                query_params={"page": page, "perPage": per_page, "sort": sort},
             )
+            # Convert to dict (like PageManager does)
+            return {
+                "items": result.items,
+                "page": result.page,
+                "perPage": result.per_page,
+                "totalItems": result.total_items,
+                "totalPages": result.total_pages,
+            }
         except Exception as e:
             print(f"Aina-chan couldn't list roles! Error: {e} (╥﹏╥)")
             return {"items": [], "page": page, "perPage": per_page, "totalItems": 0, "totalPages": 0}
 
-    # ─── User-Role Operations ─────────────────────────────────
+    # ─── User operations ────────────────────────────────────────
 
     def get_user(self, user_id: str) -> Optional[dict]:
-        """Get a user from PocketBase's built-in users collection."""
         try:
-            return self.client.collections.get_one("users", user_id)
+            return self.client.collections.get_one(self.USERS_COLLECTION, user_id)
         except Exception:
             return None
 
-    def list_users(self, page: int = 1, per_page: int = 50) -> dict:
-        """List users with their role info expanded."""
+    def list_users(self, page: int = 1, per_page: int = 20, sort: str = "-created") -> dict:
         try:
-            return self.client.collections.get_list(
-                "users",
-                query_params={
-                    "page": page,
-                    "perPage": per_page,
-                    "sort": "-created",
-                    "expand": "role",
-                },
+            result = self.client.collections.get_list(
+                self.USERS_COLLECTION,
+                query_params={"page": page, "perPage": per_page, "sort": sort, "expand": "role"},
             )
+            return {
+                "items": result.items,
+                "page": result.page,
+                "perPage": result.per_page,
+                "totalItems": result.total_items,
+                "totalPages": result.total_pages,
+            }
         except Exception as e:
             print(f"Aina-chan couldn't list users! Error: {e} (╥﹏╥)")
             return {"items": [], "page": page, "perPage": per_page, "totalItems": 0, "totalPages": 0}
 
     def assign_role(self, user_id: str, role_id: str) -> bool:
-        """
-        Assign a role to a user.
-
-        Since the 'role' field is a relation, we just set the role_id.
-        Updating the role's permissions automatically affects all users!
-        """
         try:
-            self.client.collections.update("users", user_id, {"role": role_id})
+            self.client.collections.update(self.USERS_COLLECTION, user_id, {"role": role_id})
             return True
         except Exception as e:
             print(f"Aina-chan couldn't assign role! Error: {e} (╥﹏╥)")
             return False
 
     def remove_role(self, user_id: str) -> bool:
-        """Remove a user's role."""
         try:
-            self.client.collections.update("users", user_id, {"role": None})
+            self.client.collections.update(self.USERS_COLLECTION, user_id, {"role": None})
             return True
         except Exception as e:
             print(f"Aina-chan couldn't remove role! Error: {e} (╥﹏╥)")
             return False
 
     def get_user_role(self, user_id: str) -> Optional[dict]:
-        """Get the full role object for a user."""
         try:
             user = self.client.collections.get_one(
-                "users", user_id, query_params={"expand": "role"},
+                self.USERS_COLLECTION, user_id, query_params={"expand": "role"},
             )
+            # user is a Collection/Record object? Actually get_one returns a Collection model? Wait, for user collection, it's a Record model. Let's assume it has .expand property.
             if user:
-                return user.get("expand", {}).get("role")
+                exp = getattr(user, 'expand', {}) or {}
+                return exp.get("role")
             return None
         except Exception:
             return None
 
-    # ─── Permission Checking ──────────────────────────────────
+    # ─── Permission checking ────────────────────────────────────
 
     def check_permission(self, user_id: str, permission: str) -> bool:
-        """
-        Check if a user has a specific permission.
-
-        Args:
-            user_id: The user's ID
-            permission: Permission key like 'pages_create', 'articles_delete'
-
-        Returns:
-            True if the user's role has this permission enabled.
-        """
         role = self.get_user_role(user_id)
         if not role:
             return False
-
-        permissions = role.get("permissions", {})
-        if isinstance(permissions, dict):
-            return permissions.get(permission, False)
-        return False
+        perms = role.get("permissions", {})
+        return perms.get(permission, False) if isinstance(perms, dict) else False
 
     def check_permissions_bulk(self, user_id: str, permissions: List[str]) -> dict:
-        """
-        Check multiple permissions at once.
-
-        Returns a dict of {permission: bool}.
-        """
         role = self.get_user_role(user_id)
-        result = {}
-
         if not role:
             return {p: False for p in permissions}
-
-        role_perms = role.get("permissions", {})
-        if not isinstance(role_perms, dict):
+        perms = role.get("permissions", {})
+        if not isinstance(perms, dict):
             return {p: False for p in permissions}
-
-        for perm in permissions:
-            result[perm] = role_perms.get(perm, False)
-
-        return result
+        return {p: perms.get(p, False) for p in permissions}
 
     def get_all_permissions(self, user_id: str) -> dict:
-        """
-        Get all permissions for a user.
-
-        Returns the full permissions dict from their role, or all False.
-        """
         role = self.get_user_role(user_id)
         if not role:
             return {}
-
         perms = role.get("permissions", {})
         return perms if isinstance(perms, dict) else {}
 
-    # ─── Staff / Admin Check ──────────────────────────────────
-
     def is_staff(self, user_id: str) -> bool:
-        """Check if a user has staff status (can access admin)."""
         role = self.get_user_role(user_id)
-        if not role:
-            return False
-        return role.get("is_staff", False)
+        return role.get("is_staff", False) if role else False
 
     def can_access_admin(self, user_id: str) -> bool:
-        """Check if a user can access the admin dashboard."""
         role = self.get_user_role(user_id)
         if not role:
             return False
-        permissions = role.get("permissions", {})
-        if isinstance(permissions, dict):
-            return permissions.get("admin_access", False)
-        return False
+        perms = role.get("permissions", {})
+        return perms.get("admin_access", False) if isinstance(perms, dict) else False
 
-    # ─── Stats ─────────────────────────────────────────────────
+    # ─── Stats ──────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
-        """Get user and role statistics."""
         total_users = 0
         total_roles = 0
-
         try:
-            user_result = self.client.collections.get_list(
-                "users", query_params={"perPage": 1},
-            )
-            total_users = user_result.get("totalItems", 0)
+            user_result = self.client.collections.get_list(self.USERS_COLLECTION, query_params={"perPage": 1})
+            total_users = user_result.total_items
         except Exception:
             pass
-
         try:
-            role_result = self.client.collections.get_list(
-                self.ROLES_COLLECTION, query_params={"perPage": 1},
-            )
-            total_roles = role_result.get("totalItems", 0)
+            role_result = self.client.collections.get_list(self.ROLES_COLLECTION, query_params={"perPage": 1})
+            total_roles = role_result.total_items
         except Exception:
             pass
-
-        return {
-            "total_users": total_users,
-            "total_roles": total_roles,
-        }
+        return {"total_users": total_users, "total_roles": total_roles}

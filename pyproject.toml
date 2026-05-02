@@ -35,10 +35,9 @@ dependencies = [
     "pathspec>=0.12.1",
     "pillow==12.0.0",
     "pluggy==1.6.0",
-    "pocketbase>=0.16.0",
     "pyasn1==0.4.8",
     "pycparser==2.22",
-    "pydantic==2.11.4",
+    "pydantic[email]==2.11.4",
     "pydantic-core==2.33.2",
     "pydantic-settings==2.12.0",
     "pygments==2.19.2",
@@ -60,4 +59,8 @@ dependencies = [
     "typing-inspection==0.4.0",
     "urllib3==2.4.0",
     "uvicorn==0.34.2",
+    "pocketbase",
 ]
+
+[tool.uv.sources]
+pocketbase = { git = "https://github.com/iteranya/pocketbase.git" }

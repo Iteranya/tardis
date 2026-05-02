@@ -1,6 +1,6 @@
 from typing import Optional
-from backend.article.manager import ArticleManager
-from backend.article.schema import (
+from backend.articles.manager import ArticleManager
+from backend.articles.schema import (
     ArticleCreate, ArticleUpdate, ArticleResponse,
     ArticleSummary,
 )

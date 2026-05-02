@@ -67,29 +67,6 @@ class AuthManager:
 
     # ─── Superuser Management ───
 
-    def create_superuser(self, email: str, password: str) -> dict:
-        """
-        Create the initial superuser.
-
-        Only works if NO superuser exists yet (PocketBase restriction).
-        """
-        response = httpx.post(
-            f"{self.pb_url}/api/collections/_superusers/records",
-            json={
-                "email": email,
-                "password": password,
-                "passwordConfirm": password,
-            },
-            timeout=10,
-        )
-
-        if response.status_code == 403:
-            # Superuser already exists
-            data = response.json()
-            raise PermissionError(data.get("message", "A superuser already exists!"))
-
-        response.raise_for_status()
-        return response.json()
 
     def login_superuser(self, email: str, password: str) -> dict:
         """Authenticate as a superuser."""

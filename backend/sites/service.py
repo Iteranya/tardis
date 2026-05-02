@@ -1,6 +1,6 @@
 from typing import Optional
-from backend.site.manager import SiteManager
-from backend.site.schema import (
+from backend.sites.manager import SiteManager
+from backend.sites.schema import (
     SiteCreate, SiteUpdate, SiteResponse, SiteSummary,
 )
 
