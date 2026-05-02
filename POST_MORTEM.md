@@ -187,3 +187,29 @@ Also Asta is now Milkdown now, which is nice...
 
 NOW STOP USING WORDPRESS REEEEEEEEEEEEEEEE-
 
+# Update, it is now, 1st May 2026
+
+I have grown as a person
+
+I have set aside my bias
+
+And I have decided that perhaps I have been... mistaken about, many things.
+
+Yes, indeed, some technologies are created to make developer's life easier and like... It's very arrogant of me to demand them to use my own technology and pattern instead of what they are used to.
+
+I realized how awkward it is to work with an unfamiliar code base, especially a black box with such as Anita.
+
+I have also realized that Aina Web Editor is far too complex for beginner and far too restrictive for professional
+
+And so, I have decided to replace it with a simple HTML Editor and that yes... 
+
+Pocketbase is cool, like seriously, I love pocketbase... God that thing is goated.
+
+I'm replacing Anita's Collection Feature with Pocketbase!!! LET'S GOOOOOO!!!
+
+...
+
+Oh what's that? My bias against JS Frameworks?
+
+IT IS NOT BIAS IT'S FUCKING COMMON SENSE, WE HAVE ENOUGH JS FRAMEWORKS DOING THE SAME FUCKING THING FOR THE LAST 20 YEARS WE DON'T NEED ANYMORE JS FRAMEWORK AND WORDPRESS IS A BLOATED PIECE OF SHIT REEEEEEEEEEEEEEEEE-
+
