@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException
 from backend.sites.service import SiteService
 from backend.sites.schema import (
     SiteCreate,
@@ -7,8 +7,6 @@ from backend.sites.schema import (
     SiteResponse,
     SiteSummaryListResponse,
 )
-import os
-import tempfile
 
 router = APIRouter(
     prefix="/sites",
@@ -164,38 +162,3 @@ async def unpublish_site(
         return service.unpublish_site(site_id)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{site_id}/thumbnail", response_model=SiteResponse)
-async def upload_thumbnail(
-    site_id: str,
-    file: UploadFile = File(...),
-    service: SiteService = Depends(get_service),
-):
-    """Upload a thumbnail image for a site entry."""
-    allowed = ["image/jpeg", "image/png", "image/webp"]
-    if file.content_type not in allowed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Aina-chan only accepts JPEG, PNG, or WebP! "
-                   f"Got '{file.content_type}'~ (╥﹏╥)",
-        )
-
-
-    suffix = os.path.splitext(file.filename or "upload.jpg")[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        result = service.manager.upload_thumbnail(site_id, tmp_path)
-        if not result:
-            raise HTTPException(
-                status_code=500,
-                detail="Aina-chan couldn't upload the thumbnail~",
-            )
-        return SiteResponse(**result)
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)

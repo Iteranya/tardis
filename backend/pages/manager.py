@@ -1,8 +1,6 @@
-import os
 import re
 from typing import Optional
 from pocketbase import PocketBase
-from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
 from backend.util.secrets import get_secrets
 
@@ -39,7 +37,7 @@ class PageManager:
                 {"name": "slug", "type": "text", "required": True, "min": 1, "max": 200, "pattern": "^[a-z0-9\\-]+$"},
                 {"name": "desc", "type": "text", "required": False, "max": 500},
                 {"name": "content_id", "type": "text", "required": False},
-                {"name": "thumb", "type": "file", "required": False, "maxSelect": 1, "maxSize": 5_242_880, "mimeTypes": ["image/jpeg", "image/png", "image/webp"]},
+                {"name": "thumb", "type": "text", "required": False},
                 {"name": "labels", "type": "json", "required": False},
                 {"name": "tags", "type": "json", "required": False},
                 {"name": "enabled", "type": "bool", "required": False},
@@ -228,23 +226,6 @@ class PageManager:
             slug = f"{base}-{counter}"
             counter += 1
         return slug
-
-    # ─── File Uploads ─────────────────────────────────────────
-
-    def upload_thumbnail(self, page_id: str, file_path: str) -> Optional[dict]:
-        try:
-            with open(file_path, "rb") as f:
-                file_upload = FileUpload(
-                    filename=os.path.basename(file_path),
-                    data=f.read(),
-                    content_type="image/jpeg",
-                )
-            return self.client.collections.update(
-                self.COLLECTION_NAME, page_id, {"thumb": file_upload}
-            )
-        except Exception as e:
-            print(f"Aina-chan couldn't upload thumbnail! Error: {e} (╥﹏╥)")
-            return None
 
     # ─── Stats ─────────────────────────────────────────────────
 

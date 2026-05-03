@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException
 from backend.articles.service import ArticleService
 from backend.articles.schema import (
     ArticleCreate,
@@ -7,9 +7,6 @@ from backend.articles.schema import (
     ArticleResponse,
     ArticleSummaryListResponse,
 )
-import os
-import tempfile
-
 router = APIRouter(
     prefix="/articles",
     tags=["Articles"],
@@ -165,39 +162,3 @@ async def unpublish_article(
         return service.unpublish_article(article_id)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{article_id}/thumbnail", response_model=ArticleResponse)
-async def upload_thumbnail(
-    article_id: str,
-    file: UploadFile = File(...),
-    service: ArticleService = Depends(get_service),
-):
-    """Upload a thumbnail image for an article."""
-    # Validate type
-    allowed = ["image/jpeg", "image/png", "image/webp"]
-    if file.content_type not in allowed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Aina-chan only accepts JPEG, PNG, or WebP! "
-                   f"Got '{file.content_type}'~ (╥﹏╥)",
-        )
-
-    
-    suffix = os.path.splitext(file.filename or "upload.jpg")[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        result = service.manager.upload_thumbnail(article_id, tmp_path)
-        if not result:
-            raise HTTPException(
-                status_code=500,
-                detail="Aina-chan couldn't upload the thumbnail~",
-            )
-        return ArticleResponse(**result)
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)

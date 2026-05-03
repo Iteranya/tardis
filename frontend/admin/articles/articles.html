@@ -1,25 +1,141 @@
 {% extends "admin/base.html" %}
+
 {% block title %}Articles{% endblock %}
+
 {% block content %}
-<div class="space-y-6">
-    <div class="flex items-center justify-between">
+<div x-data="articlesApp()" x-init="init()">
+    <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-gray-900">Articles</h1>
-        <button class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-500 transition">+ New Article</button>
+        <button
+            @click="createArticle()"
+            class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium"
+        >
+            + New Article
+        </button>
     </div>
+
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 mb-4">
+        <input
+            type="text"
+            x-model="filters.search"
+            @input.debounce="loadArticles()"
+            placeholder="Search articles..."
+            class="border border-gray-300 rounded px-3 py-2 text-sm flex-1 min-w-[200px]"
+        >
+        <select x-model="filters.enabled" @change="loadArticles()" class="border border-gray-300 rounded px-3 py-2 text-sm">
+            <option value="">All status</option>
+            <option value="true">Published</option>
+            <option value="false">Draft</option>
+        </select>
+        <select x-model="filters.sort" @change="loadArticles()" class="border border-gray-300 rounded px-3 py-2 text-sm">
+            <option value="-created">Newest</option>
+            <option value="created">Oldest</option>
+            <option value="-sort_order">Sort order (desc)</option>
+            <option value="sort_order">Sort order (asc)</option>
+            <option value="title">Title A-Z</option>
+            <option value="-title">Title Z-A</option>
+        </select>
+    </div>
+
+    <!-- Loading -->
+    <div x-show="loading" class="text-center py-8 text-gray-500 text-sm">
+        <svg class="animate-spin h-5 w-5 inline mr-2 text-primary-600" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        Loading articles...
+    </div>
+
+    <!-- Error -->
+    <div x-show="error" class="bg-red-50 text-red-700 p-3 rounded mb-4 text-sm">
+        <strong>Error:</strong> <span x-text="error"></span>
+    </div>
+
+    <!-- Article table -->
     <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table class="min-w-full">
+        <table class="min-w-full divide-y divide-gray-200" x-show="!loading">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Author</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Author</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden lg:table-cell">Tags</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Sort</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden lg:table-cell">Created</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-200">
-                <tr><td colspan="4" class="px-6 py-10 text-center text-gray-400">No articles yet.</td></tr>
+                <template x-for="article in articles" :key="article.id">
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3">
+                            <div class="text-sm font-medium text-gray-900" x-text="article.title"></div>
+                            <div class="text-xs text-gray-400" x-text="article.slug"></div>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500 hidden md:table-cell" x-text="article.author || '—'"></td>
+                        <td class="px-4 py-3 hidden lg:table-cell">
+                            <template x-for="tag in (article.tags || []).slice(0,3)" :key="tag">
+                                <span class="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded mr-1" x-text="tag"></span>
+                            </template>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span
+                                :class="article.enabled ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'"
+                                class="text-xs font-medium px-2 py-0.5 rounded"
+                                x-text="article.enabled ? 'Published' : 'Draft'"
+                            ></span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500 hidden sm:table-cell" x-text="article.sort_order"></td>
+                        <td class="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell" x-text="new Date(article.created).toLocaleDateString()"></td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                            <button
+                                @click="editArticle(article.id)"
+                                class="text-primary-600 hover:text-primary-800 text-sm font-medium mr-2"
+                            >Edit</button>
+                            <button
+                                @click="togglePublish(article)"
+                                class="text-sm font-medium mr-2"
+                                :class="article.enabled ? 'text-yellow-600 hover:text-yellow-800' : 'text-green-600 hover:text-green-800'"
+                                x-text="article.enabled ? 'Unpublish' : 'Publish'"
+                            ></button>
+                            <button
+                                @click="deleteArticle(article.id)"
+                                class="text-red-600 hover:text-red-800 text-sm font-medium"
+                            >Delete</button>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="articles.length === 0 && !loading">
+                    <td colspan="7" class="px-4 py-10 text-center text-gray-400">
+                        No articles found. Create your first one!
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
+
+    <!-- Pagination -->
+    <div x-show="pagination.total_pages > 1" class="flex justify-between items-center mt-4">
+        <span class="text-sm text-gray-500">
+            Page <span x-text="pagination.page"></span> of <span x-text="pagination.total_pages"></span> (<span x-text="pagination.total_items"></span> total)
+        </span>
+        <div class="flex gap-2">
+            <button
+                @click="goToPage(pagination.page - 1)"
+                :disabled="pagination.page === 1"
+                class="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >Prev</button>
+            <button
+                @click="goToPage(pagination.page + 1)"
+                :disabled="pagination.page === pagination.total_pages"
+                class="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+            >Next</button>
+        </div>
+    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/frontend/admin/articles/articles.js"></script>
 {% endblock %}

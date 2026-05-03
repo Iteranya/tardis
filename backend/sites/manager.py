@@ -1,8 +1,6 @@
-import os
 import re
 from typing import Optional
 from pocketbase import PocketBase
-from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
 from backend.util.secrets import get_secrets
 
@@ -39,7 +37,7 @@ class SiteManager:
                 {"name": "author", "type": "text", "required": False, "max": 100},
                 {"name": "draft_html", "type": "editor", "required": False},
                 {"name": "release_html", "type": "editor", "required": False},
-                {"name": "thumb", "type": "file", "required": False, "maxSelect": 1, "maxSize": 5_242_880, "mimeTypes": ["image/jpeg", "image/png", "image/webp"]},
+                {"name": "thumb", "type": "text", "required": False},
                 {"name": "gallery", "type": "json", "required": False},
                 {"name": "labels", "type": "json", "required": False},
                 {"name": "tags", "type": "json", "required": False},
@@ -250,23 +248,6 @@ class SiteManager:
             slug = f"{base}-{counter}"
             counter += 1
         return slug
-
-    # ─── File Uploads ─────────────────────────────────────────
-
-    def upload_thumbnail(self, site_id: str, file_path: str) -> Optional[dict]:
-        try:
-            with open(file_path, "rb") as f:
-                file_upload = FileUpload(
-                    filename=os.path.basename(file_path),
-                    data=f.read(),
-                    content_type="image/jpeg",
-                )
-            return self.client.collections.update(
-                self.COLLECTION_NAME, site_id, {"thumb": file_upload}
-            )
-        except Exception as e:
-            print(f"Aina-chan couldn't upload thumbnail! Error: {e} (╥﹏╥)")
-            return None
 
     # ─── Stats ─────────────────────────────────────────────────
 

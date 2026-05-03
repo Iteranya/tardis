@@ -4,17 +4,10 @@ from typing import Optional, List
 from pocketbase import PocketBase
 from backend.util.auth import authenticate_admin
 from backend.util.secrets import get_secrets
-
+from pocketbase.client import FileUpload
+import mimetypes
 
 class StorageManager:
-    """
-    Aina-chan's Storage Manager! (◕‿◕✿)
-
-    Fully self-contained module for the 'storage' collection.
-    Tracks metadata of all files and media uploaded to Anita-CMS.
-
-    This can be deleted without breaking anything else!
-    """
 
     COLLECTION_NAME = "sys_storage"
 
@@ -49,6 +42,7 @@ class StorageManager:
                 {"name": "tags", "type": "json", "required": False},
                 {"name": "uploaded_by", "type": "text", "required": False, "max": 100},
                 {"name": "checksum", "type": "text", "required": False, "max": 64},
+                {"name": "content", "type": "file", "required": False, "maxSelect": 1, "maxSize": 5_242_880},
                 {"name": "is_public", "type": "bool", "required": False},
                 {"name": "custom", "type": "json", "required": False},
                 {"name": "created", "type": "autodate", "onCreate": True, "onUpdate": False},
@@ -365,3 +359,103 @@ class StorageManager:
             "documents": document_count,
             "other": other_count,
         }
+
+
+
+    # ── File Upload ──
+    def upload_file(self, file_path: str, metadata: Optional[dict] = None) -> Optional[dict]:
+        """
+        Upload a file to PocketBase and create a storage record.
+
+        Args:
+            file_path: Absolute or relative path to the file on disk.
+            metadata:   Optional dict with field values (name, folder, alt_text, etc.)
+                        If not provided, defaults are inferred from the file.
+
+        Returns:
+            The record dict, or None on failure.
+        """
+        if metadata is None:
+            metadata = {}
+
+        try:
+            # ── Read file ──
+            with open(file_path, 'rb') as f:
+                file_bytes = f.read()
+
+            filename = os.path.basename(file_path)
+            content_type, _ = mimetypes.guess_type(file_path)
+            if not content_type:
+                content_type = 'application/octet-stream'
+            size = len(file_bytes)
+
+            # ── Build record data ──
+            data = {
+                **metadata,
+                "content": FileUpload(
+                    filename=filename,
+                    data=file_bytes,
+                    content_type=content_type,
+                ),
+                "name": metadata.get("name", filename),
+                "mime_type": content_type,
+                "size": size,
+                "slug": metadata.get("slug") or self.generate_unique_slug(
+                    filename,
+                    metadata.get("folder", ""),
+                ),
+            }
+
+            # ── Create record in PocketBase (correct SDK) ──
+            record = self.client.collection(self.COLLECTION_NAME).create(data)
+            return self._record_to_dict(record)
+
+        except Exception as e:
+            print(f"Aina-chan couldn't upload file! Error: {e} (╥﹏╥)")
+            return None
+
+
+    def update_file(self, record_id: str, file_path: str,
+                    metadata: Optional[dict] = None) -> Optional[dict]:
+        """
+        Replace the file content of an existing storage record.
+
+        Args:
+            record_id: ID of the record to update.
+            file_path: Path to the new file.
+            metadata:  Optional dict with field updates (e.g. new name, alt_text).
+
+        Returns:
+            The updated record dict, or None on failure.
+        """
+        if metadata is None:
+            metadata = {}
+
+        try:
+            with open(file_path, 'rb') as f:
+                file_bytes = f.read()
+
+            filename = os.path.basename(file_path)
+            content_type, _ = mimetypes.guess_type(file_path)
+            if not content_type:
+                content_type = 'application/octet-stream'
+            size = len(file_bytes)
+
+            data = {
+                **metadata,
+                "content": FileUpload(
+                    filename=filename,
+                    data=file_bytes,
+                    content_type=content_type,
+                ),
+                "name": metadata.get("name", filename),
+                "mime_type": content_type,
+                "size": size,
+            }
+
+            record = self.client.collection(self.COLLECTION_NAME).update(record_id, data)
+            return self._record_to_dict(record)
+
+        except Exception as e:
+            print(f"Aina-chan couldn't update file! Error: {e} (╥﹏╥)")
+            return None
