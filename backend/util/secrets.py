@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from typing import Optional, Dict, Any
 
 
@@ -113,6 +114,7 @@ class SecretsManager:
         """
         Load secrets.json if it exists, otherwise create it with defaults!
         """
+        t0 = time.time()
         if os.path.exists(self.secrets_path):
             try:
                 with open(self.secrets_path, "r", encoding="utf-8") as f:
@@ -136,6 +138,7 @@ class SecretsManager:
             )
             self._initialize_defaults()
             self.save()
+        print(f"⏱️ SecretsManager init took {time.time() - t0:.3f}s")
 
     def _initialize_defaults(self) -> None:
         """Set the internal data to the default template."""

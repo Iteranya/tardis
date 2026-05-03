@@ -26,6 +26,7 @@ from backend.storage.router import router as storage_router
 from backend.users.router import router as users_router
 from backend.auth.router import api_router as auth_api_router
 from backend.auth.router import page_router as auth_page_router
+from backend.admin.router import router as admin_router
 
 
 # ─── Credential Setup ─────────────────────────────────────────
@@ -164,6 +165,7 @@ app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 # Auth API
 app.include_router(auth_api_router)  
+app.include_router(admin_router)
 app.include_router(pages_router)
 app.include_router(article_router)
 app.include_router(site_router)

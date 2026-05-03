@@ -35,14 +35,21 @@ function loginForm() {
 
                 if (response.ok) {
                     this.success = 'Login successful! Redirecting...';
+                    console.log('Login Success!')
+                    console.log("Raw Data...")
+                    console.log(data)
+                    console.log("Checking Token...")
+                    console.log(data.token)
+                    console.log("Checking User...")
+                    console.log(data.user)
                     // Store token
                     localStorage.setItem('anita_token', data.token);
                     localStorage.setItem('anita_user', JSON.stringify(data.user));
 
-                    // Redirect to admin dashboard
-                    setTimeout(() => {
-                        window.location.href = '/admin/dashboard';
-                    }, 500);
+                    // // Redirect to admin dashboard
+                    // setTimeout(() => {
+                    //     window.location.href = '/admin/dashboard';
+                    // }, 500);
                 } else {
                     // Handle validation errors
                     if (data.data) {
