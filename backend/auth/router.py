@@ -12,6 +12,7 @@ from backend.auth.schema import (
     TestConnectionRequest,
     TestConnectionResponse,
     MeResponse,
+    UserResponse,
     ValidateCredentialsRequest,
 )
 from backend.util.dependencies import AuthDependency
@@ -219,22 +220,20 @@ async def register(
 
 @api_router.get("/auth/me", response_model=MeResponse)
 async def get_me(
-    authorization: str = Header(None),
     user = Depends(AuthDependency()),
 ):
-    """Get the currently authenticated user's info."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Not authenticated.")
-
-    token = authorization.replace("Bearer ", "").strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Invalid token.")
-
-    result = user
-    if not result:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-
-    return result
+    return MeResponse(
+        user=UserResponse(
+            id=user.get("id", ""),
+            email=user.get("email", ""),
+            username=user.get("username"),
+            verified=user.get("verified", False),
+            avatar=user.get("avatar"),
+            created=user.get("created", ""),
+            updated=user.get("updated", ""),
+        ),
+        is_superuser=user.get("_collection") == "_superusers",
+    )
 
 
 @api_router.post("/auth/logout")

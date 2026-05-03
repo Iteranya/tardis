@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anita-CMS Admin</title>
+    <link rel="stylesheet" href="/static/admin/index.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+    <!-- Notification partial (empty container, Alpine will manage) -->
+    {% include "admin/utils/partials/notification.html" %}
+
+    <div class="admin-shell" x-data="adminApp()" x-init="init()">
+        <!-- Header -->
+        {% include "admin/utils/partials/header.html" %}
+
+        <div class="admin-body">
+            <!-- Sidebar -->
+            {% include "admin/utils/partials/sideBar.html" %}
+
+            <!-- Main Content Area -->
+            <main class="main-content" id="main-content">
+                <!-- Initial loading state -->
+                <div class="loading" x-show="loading">Loading…</div>
+                <!-- Dynamic content will be loaded here -->
+            </main>
+        </div>
+
+        <!-- Footer -->
+        {% include "admin/utils/partials/footer.html" %}
+    </div>
+
+    <script src="/static/admin/index.js"></script>
+</body>
+</html>

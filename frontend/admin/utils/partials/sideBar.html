@@ -1,0 +1,13 @@
+<aside class="admin-sidebar">
+    <nav>
+        <ul>
+            <li><a href="#/dashboard" @click.prevent="navigate('dashboard')" :class="{'active': currentPage === 'dashboard'}">📊 Dashboard</a></li>
+            <li><a href="#/articles" @click.prevent="navigate('articles')" :class="{'active': currentPage === 'articles'}">📝 Articles</a></li>
+            <li><a href="#/pages" @click.prevent="navigate('pages')" :class="{'active': currentPage === 'pages'}">📄 Pages</a></li>
+            <li><a href="#/sites" @click.prevent="navigate('sites')" :class="{'active': currentPage === 'sites'}">🌐 Sites</a></li>
+            <li><a href="#/storage" @click.prevent="navigate('storage')" :class="{'active': currentPage === 'storage'}">📁 Storage</a></li>
+            <li><a href="#/collections" @click.prevent="navigate('collections')" :class="{'active': currentPage === 'collections'}">🗂️ Collections</a></li>
+            <li><a href="#/users" @click.prevent="navigate('users')" :class="{'active': currentPage === 'users'}">👥 Users</a></li>
+        </ul>
+    </nav>
+</aside>

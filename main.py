@@ -26,6 +26,7 @@ from backend.storage.router import router as storage_router
 from backend.users.router import router as users_router
 from backend.auth.router import api_router as auth_api_router
 from backend.auth.router import page_router as auth_page_router
+from backend.admin.router import router as admin_router
 
 
 # ─── Credential Setup ─────────────────────────────────────────
@@ -159,9 +160,8 @@ app.add_middleware(
 
 # Auth pages first
 app.include_router(auth_page_router)
-app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
 app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
-
 # Auth API
 app.include_router(auth_api_router)  
 app.include_router(pages_router)
@@ -170,6 +170,7 @@ app.include_router(site_router)
 app.include_router(collections_router)
 app.include_router(storage_router)
 app.include_router(users_router)
+app.include_router(admin_router)
 
 
 # ─── Root Endpoint ─────────────────────────────────────────────

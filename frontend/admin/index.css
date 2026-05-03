@@ -1,0 +1,148 @@
+/* Reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    min-height: 100vh;
+}
+
+.admin-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* Header */
+.admin-header {
+    background: #1a1a2e;
+    color: white;
+    padding: 0 1.5rem;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-logo {
+    font-weight: 700;
+    font-size: 1.2rem;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.btn-logout {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.btn-logout:hover {
+    background: #c0392b;
+}
+
+/* Body layout */
+.admin-body {
+    display: flex;
+    flex: 1;
+}
+
+/* Sidebar */
+.admin-sidebar {
+    width: 220px;
+    background: #16213e;
+    color: white;
+    padding-top: 1rem;
+    flex-shrink: 0;
+    overflow-y: auto;
+}
+
+.admin-sidebar ul {
+    list-style: none;
+}
+
+.admin-sidebar li a {
+    display: block;
+    padding: 0.75rem 1.2rem;
+    color: #b0b0b0;
+    text-decoration: none;
+    transition: 0.2s;
+    font-size: 0.95rem;
+}
+
+.admin-sidebar li a:hover,
+.admin-sidebar li a.active {
+    background: #0f3460;
+    color: white;
+    border-left: 4px solid #e94560;
+    padding-left: calc(1.2rem - 4px);
+}
+
+/* Main content */
+.main-content {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+    background: #f0f2f5;
+}
+
+.loading {
+    text-align: center;
+    padding: 3rem;
+    font-size: 1.2rem;
+    color: #888;
+}
+
+/* Footer */
+.admin-footer {
+    background: #1a1a2e;
+    color: #999;
+    text-align: center;
+    padding: 0.8rem;
+    font-size: 0.8rem;
+}
+
+/* Notification */
+.notification-container {
+    position: fixed;
+    top: 60px;
+    right: 1rem;
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.notification {
+    padding: 0.8rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    min-width: 250px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    animation: slideIn 0.3s ease;
+}
+
+.notification.success { background: #27ae60; color: white; }
+.notification.error { background: #e74c3c; color: white; }
+.notification.info { background: #2980b9; color: white; }
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(100%); }
+    to { opacity: 1; transform: translateX(0); }
+}

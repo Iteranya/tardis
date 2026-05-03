@@ -1,0 +1,5 @@
+<div id="notification-container" class="notification-container" x-data="notificationManager()">
+    <template x-for="notif in notifications" :key="notif.id">
+        <div class="notification" :class="notif.type" x-text="notif.message" @click="remove(notif.id)"></div>
+    </template>
+</div>
