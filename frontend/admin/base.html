@@ -41,7 +41,7 @@
     <link rel="stylesheet" href="/frontend/admin/main.css">
     {% block head %}{% endblock %}
 </head>
-<body class="h-full" x-data="adminApp()" x-init="init()">
+<body x-cloak x-data="adminApp()" x-init="init()" class="h-full bg-gray-100">
     <!-- Loading overlay -->
     <div x-show="loading" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
         <div class="bg-white p-6 rounded-xl shadow-xl flex items-center gap-3">
@@ -54,7 +54,7 @@
     </div>
 
     <!-- Unauthorized message -->
-    <div x-show="!authenticated" class="fixed inset-0 z-50 flex items-center justify-center bg-white">
+    <div x-show="!loading && !authenticated" class="fixed inset-0 z-50 flex items-center justify-center bg-white">
         <div class="text-center">
             <p class="text-red-600 text-lg font-semibold">Unauthorized</p>
             <p class="text-gray-500">You need to be logged in as superuser.</p>

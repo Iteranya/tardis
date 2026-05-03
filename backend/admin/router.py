@@ -1,8 +1,8 @@
-import os
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from backend.admin.manager import DashboardManager
 from backend.util.auth import require_superuser
 
 
@@ -85,11 +85,14 @@ async def admin_users(request: Request):
 
 @router.get("/api/stats", dependencies=[Depends(require_superuser)])
 async def admin_stats(request: Request):
-    """Dashboard statistics – token required."""
-    return {
-        "pages": 0,
-        "articles": 0,
-        "sites": 0,
-        "storage": 0,
-        "users": 0,
-    }
+    """Dashboard statistics – fetched live from PocketBase."""
+    # Get the token from the Authorization header
+    auth_header = request.headers.get("authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header else ""
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing token")
+
+    manager = DashboardManager(token)
+    stats = manager.get_all_stats()
+    print(f"📊 [Dashboard] Stats: {stats}")  # debug
+    return stats

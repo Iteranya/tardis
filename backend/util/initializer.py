@@ -1,6 +1,6 @@
 import time
 from pocketbase import PocketBase
-from backend.util.secrets import SecretsManager
+from backend.util.secrets import get_secrets
 from backend.util.auth import authenticate_admin
 
 
@@ -12,7 +12,7 @@ def initialize_all_modules():
         dict: Results per module with '✅' or error message.
         Also sets secrets.json "initialized" = True if all succeeded.
     """
-    secrets = SecretsManager()
+    secrets = get_secrets()
     pb_url = secrets.pocketbase_url
     email = secrets.admin_email
     password = secrets.admin_password

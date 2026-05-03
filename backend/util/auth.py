@@ -1,8 +1,17 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from backend.auth.manager import AuthManager
-from backend.util.secrets import SecretsManager
+from backend.auth.service import AuthService
+from backend.util.secrets import get_secrets
 
+_auth_service_instance = None
+
+def get_auth_service() -> AuthService:
+    global _auth_service_instance
+    if _auth_service_instance is None:
+        print("⚡ [ROUTER] Creating NEW AuthService instance (first time only!)")
+        _auth_service_instance = AuthService()
+    return _auth_service_instance
 
 def authenticate_admin(client, email: str, password: str) -> bool:
     print(f"\n🔐 [DEPENDS authenticate_admin] Attempting auth for {email}")
@@ -48,7 +57,7 @@ async def get_current_superuser(
     print(f"🔑 [DEPENDS] Token: {token[:50]}... (len={len(token)})")
 
     # Load secrets
-    secrets = SecretsManager()
+    secrets = get_secrets()
     print(f"📂 [DEPENDS] SecretsManager created.")
     pb_url = getattr(secrets, 'pocketbase_url', None)
     print(f"🌐 [DEPENDS] PocketBase URL from secrets: {pb_url}")

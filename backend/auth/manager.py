@@ -1,7 +1,8 @@
-import os
+import time
 from typing import Optional
+import jwt
 from pocketbase import PocketBase
-from backend.util.secrets import SecretsManager
+from backend.util.secrets import get_secrets
 import traceback  # Already imported in one method, but let's make it global
 
 
@@ -10,7 +11,7 @@ class AuthManager:
     def __init__(self, pb_url: Optional[str] = None):
         print("\n" + "=" * 60)
         print("🛠️ [AUTH MANAGER] __init__ CALLED")
-        self._secrets = SecretsManager()
+        self._secrets = get_secrets()
         print(f"📂 SecretsManager created. Type: {type(self._secrets)}")
         print(f"🔑 SecretsManager has 'pocketbase_url'? {hasattr(self._secrets, 'pocketbase_url')}")
         if hasattr(self._secrets, 'pocketbase_url'):
@@ -189,140 +190,68 @@ class AuthManager:
     # ─── Token Validation & Refresh ───
 
     def get_user_by_token(self, token: str) -> Optional[dict]:
-        print("\n" + "=" * 60)
-        print("🔍 [get_user_by_token] CALLED")
-        print(f"   Token length: {len(token)}")
-        print(f"   Token[:50]: {token[:50]}...")
-        print(f"   pb_url: {self.pb_url}")
-
-        # ── TRY SUPERUSER REFRESH ──
+        # 1. Decode JWT to get id
         try:
-            print("\n--- Attempting superuser auth_refresh ---")
-            client = PocketBase(self.pb_url)
-            print(f"   Client created. Saving token to auth store...")
-            client.auth_store.save(token)
-            print(f"   Token saved. Calling _superusers auth_refresh...")
-            result = client.collection("_superusers").auth_refresh()
-            print(f"   ✅ auth_refresh SUCCEEDED for superuser!")
-            print(f"   Result type: {type(result)}")
-            print(f"   Result has record? {hasattr(result, 'record')}")
-            record = result.record
-            print(f"   Record type: {type(record)}")
+            payload = jwt.decode(token, options={"verify_signature": False})
+            user_id = payload.get("id")
+            if not user_id:
+                print("   ❌ No id in token")
+                return None
+            # Check expiry
+            if time.time() > payload.get("exp", 0):
+                print("   ❌ Token expired")
+                return None
+        except Exception as e:
+            print(f"   ❌ JWT decode failed: {e}")
+            return None
 
-            # Print all attributes of record to see exact field names!
-            print("   Record attributes & values:")
-            for attr in dir(record):
-                if not attr.startswith('_'):
-                    val = getattr(record, attr)
-                    print(f"      {attr}: {val!r} (type: {type(val).__name__})")
+        # 3. Fetch record from PocketBase (no auth_refresh!)
+        data = self._fetch_user_record(token, user_id)
+        return data
 
-            # Build dict with explicit field names as expected by schema
-            data = {
+    def _fetch_user_record(self, token: str, user_id: str) -> Optional[dict]:
+        """Try to get the user record by ID using GET, not auth_refresh."""
+        client = PocketBase(self.pb_url)
+        client.auth_store.save(token)
+
+        # Try superusers first
+        try:
+            print("   📡 Fetching from _superusers by ID...")
+            record = client.collection("_superusers").get_one(user_id)
+            print(f"   ✅ Found in _superusers")
+            return {
                 "id": record.id,
                 "email": record.email,
-                # Use both possible attribute names and print them
-                "emailVisibility": getattr(record, 'emailVisibility', None),
-                "email_visibility": getattr(record, 'email_visibility', None),
                 "username": getattr(record, 'username', None),
                 "verified": getattr(record, 'verified', False),
                 "avatar": getattr(record, 'avatar', None),
                 "collectionId": record.collection_id,
-                "collectionName": record.collection_name,
-                "created": str(record.created) if record.created else None,
-                "updated": str(record.updated) if record.updated else None,
+                "collectionName": "_superusers",
+                "created": str(record.created) if record.created else "",
+                "updated": str(record.updated) if record.updated else "",
+                "is_superuser": True,
             }
-            print(f"   Built data dict for superuser:")
-            for k, v in data.items():
-                print(f"      {k}: {v!r} (type: {type(v).__name__})")
-            data["is_superuser"] = True
-            print(f"   Set is_superuser = True")
-            return data
-
         except Exception as e:
-            print(f"   ❌ Superuser auth_refresh failed!")
-            print(f"   Exception type: {type(e).__name__}")
-            print(f"   Exception args: {e.args}")
-            traceback.print_exc()
-            if hasattr(e, 'response'):
-                print(f"   Response status: {e.response.status_code}")
-                print(f"   Response body: {e.response.text}")
-            else:
-                # Try to get the raw response from the client's last request?
-                print("   No response attribute on exception.")
+            print(f"   ❌ Not in superusers: {e}")
 
-        # ── TRY REGULAR USER REFRESH ──
+        # Try regular users
         try:
-            print("\n--- Attempting regular user auth_refresh ---")
-            client = PocketBase(self.pb_url)
-            client.auth_store.save(token)
-            print("   Calling users auth_refresh...")
-            result = client.collection("users").auth_refresh()
-            print(f"   ✅ auth_refresh SUCCEEDED for regular user!")
-            record = result.record
-            print(f"   Record type: {type(record)}")
-            print("   Record attributes:")
-            for attr in dir(record):
-                if not attr.startswith('_'):
-                    val = getattr(record, attr)
-                    print(f"      {attr}: {val!r} (type: {type(val).__name__})")
-
-            data = {
+            print("   📡 Fetching from users by ID...")
+            record = client.collection("users").get_one(user_id)
+            print(f"   ✅ Found in users")
+            return {
                 "id": record.id,
                 "email": record.email,
-                "emailVisibility": getattr(record, 'emailVisibility', None),
-                "email_visibility": getattr(record, 'email_visibility', None),
                 "username": getattr(record, 'username', None),
                 "verified": getattr(record, 'verified', False),
                 "avatar": getattr(record, 'avatar', None),
                 "collectionId": record.collection_id,
-                "collectionName": record.collection_name,
-                "created": str(record.created) if record.created else None,
-                "updated": str(record.updated) if record.updated else None,
+                "collectionName": "users",
+                "created": str(record.created) if record.created else "",
+                "updated": str(record.updated) if record.updated else "",
+                "is_superuser": False,
             }
-            data["is_superuser"] = False
-            print(f"   Built data dict for regular user:")
-            for k, v in data.items():
-                print(f"      {k}: {v!r}")
-            return data
-
         except Exception as e:
-            print(f"   ❌ Regular user auth_refresh also failed!")
-            print(f"   Exception: {e}")
-            traceback.print_exc()
-            if hasattr(e, 'response'):
-                print(f"   Response status: {e.response.status_code}")
-                print(f"   Response body: {e.response.text}")
+            print(f"   ❌ Not in users either: {e}")
 
-        print("   💀 Both auth methods failed. Returning None.")
-        return None
-
-    def refresh_token(self, token: str) -> Optional[dict]:
-        print("\n===== 🔄 [refresh_token] =====")
-        print(f"   Token[:20]: {token[:20]}...")
-
-        # Try superuser
-        try:
-            print("   Trying superuser refresh...")
-            client = self._client(token)
-            result = client.collection("_superusers").auth_refresh()
-            print(f"   ✅ Superuser refresh succeeded!")
-            print(f"   New token[:20]: {result.token[:20]}...")
-            return {"token": result.token, "record": result.record}
-        except Exception as e:
-            print(f"   ❌ Superuser refresh failed: {e}")
-            traceback.print_exc()
-
-        # Try regular user
-        try:
-            print("   Trying regular user refresh...")
-            client = self._client(token)
-            result = client.collection("users").auth_refresh()
-            print(f"   ✅ Regular user refresh succeeded!")
-            print(f"   New token[:20]: {result.token[:20]}...")
-            return {"token": result.token, "record": result.record}
-        except Exception as e:
-            print(f"   ❌ Regular user refresh failed: {e}")
-            traceback.print_exc()
-
-        print("   💀 Both refresh attempts failed. Returning None.")
         return None

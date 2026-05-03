@@ -11,7 +11,7 @@ function setupForm() {
         connectionTested: false,
         connectionOk: false,
         pbVersion: '?',
-        pocketbase: { url: 'http://localhost:8090' },
+        pocketbase: { url: 'http://127.0.0.1:8090' },
 
         // Step 2
         admin: { email: '', password: '' },

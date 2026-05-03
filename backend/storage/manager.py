@@ -3,7 +3,7 @@ import re
 from typing import Optional, List
 from pocketbase import PocketBase
 from backend.util.auth import authenticate_admin
-from backend.util.secrets import SecretsManager
+from backend.util.secrets import get_secrets
 
 
 class StorageManager:
@@ -59,7 +59,7 @@ class StorageManager:
     # ─── Initialization ───────────────────────────────────────
 
     def __init__(self, pb_url=None, admin_email=None, admin_password=None):
-        self._secrets = SecretsManager()
+        self._secrets = get_secrets()
         self.pb_url = pb_url or self._secrets.pocketbase_url
         self.admin_email = admin_email or self._secrets.admin_email
         self.admin_password = admin_password or self._secrets.admin_password

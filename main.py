@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.util.initializer import initialize_all_modules
-from backend.util.secrets import SecretsManager
+from backend.util.secrets import get_secrets
 
 
 # ─── Import all modules ────────────────────────────────────────
@@ -39,7 +39,7 @@ def _ensure_credentials():
       - If --setup or SKIP_INIT=true → skip, web setup will handle it
       - Otherwise → prompt in terminal
     """
-    secrets = SecretsManager()
+    secrets = get_secrets()
 
     if secrets.is_configured:
         print("✅ PocketBase credentials found in secrets.json")
@@ -51,7 +51,7 @@ def _ensure_credentials():
 
     if web_setup:
         print("🌐 Web setup mode — credentials will be configured via browser")
-        print("   Visit http://localhost:8000/auth/setup to get started!")
+        print("   Visit http://127.0.0.1:8000/auth/setup to get started!")
         return secrets
 
     # Terminal prompt (for local development)

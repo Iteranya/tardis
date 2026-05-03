@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Optional, Dict, List, Any
-from util.secrets import SecretsManager
+from util.secrets import get_secrets
 
 
 class SitemapManager:
@@ -49,7 +49,7 @@ class SitemapManager:
             root_dir: Project root where sitemap.json lives.
                       If None, Aina will detect it automatically.
         """
-        self._secrets = SecretsManager(root_dir)
+        self._secrets = get_secrets(root_dir)
         self.root_dir = self._secrets.root_dir
         self.sitemap_path = os.path.join(self.root_dir, "sitemap.json")
         self._data: Dict[str, Any] = {}

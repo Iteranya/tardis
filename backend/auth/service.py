@@ -12,7 +12,7 @@ from backend.auth.schema import (
     MeResponse,
     UserResponse,
 )
-from backend.util.secrets import SecretsManager
+from backend.util.secrets import get_secrets
 import json  # Aina added this for pretty printing!
 
 
@@ -107,7 +107,7 @@ class AuthService:
             print(f"⚠️ [SERVICE initialize] Site creation warning: {e}")
 
         # Save credentials
-        secrets = SecretsManager()
+        secrets = get_secrets()
         secrets.set("pocketbase.url", data.pocketbase.url, save=False)
         secrets.set("pocketbase.admin_email", data.admin.email, save=False)
         secrets.set("pocketbase.admin_password", data.admin.password, save=True)

@@ -11,14 +11,14 @@ from backend.auth.schema import (
     ValidateCredentialsRequest,
 )
 from backend.util.initializer import initialize_all_modules
-from backend.util.secrets import SecretsManager
+from backend.util.secrets import get_secrets
 
 
 templates = Jinja2Templates(directory="frontend")
 
 
 def _setup_required() -> bool:
-    secrets = SecretsManager()
+    secrets = get_secrets()
     if not secrets.is_configured:
         print("🔴 [ROUTER _setup_required] Secrets not configured!")
         return True
@@ -40,9 +40,14 @@ api_router = APIRouter(prefix="/api", tags=["Auth API"])
 page_router = APIRouter(prefix="/auth", tags=["Auth Pages"])
 
 
+_auth_service_instance = None
+
 def get_service() -> AuthService:
-    print("⚡ [ROUTER] Creating new AuthService instance!")
-    return AuthService()
+    global _auth_service_instance
+    if _auth_service_instance is None:
+        print("⚡ [ROUTER] Creating NEW AuthService instance (first time only!)")
+        _auth_service_instance = AuthService()
+    return _auth_service_instance
 
 
 # ═══════════════════════════════════════════════
@@ -134,8 +139,8 @@ async def save_credentials(data: SaveCredentialsRequest):
     print(f"   URL: {data.url}")
     print(f"   Email: {data.email}")
 
-    from backend.util.secrets import SecretsManager
-    secrets = SecretsManager()
+    from backend.util.secrets import get_secrets
+    secrets = get_secrets()
     secrets.set("pocketbase.url", data.url, save=False)
     secrets.set("pocketbase.admin_email", data.email, save=False)
     secrets.set("pocketbase.admin_password", data.password, save=True)

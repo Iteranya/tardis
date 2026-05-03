@@ -3,6 +3,13 @@ import os
 import time
 from typing import Optional, Dict, Any
 
+_secrets_instance = None
+
+def get_secrets(root_dir: Optional[str] = None):
+    global _secrets_instance
+    if _secrets_instance is None:
+        _secrets_instance = SecretsManager(root_dir)
+    return _secrets_instance
 
 class SecretsManager:
     """
@@ -196,7 +203,7 @@ class SecretsManager:
         Set a value by its dot-notation key.
 
         Examples:
-            manager.set("pocketbase.url", "http://localhost:8090")
+            manager.set("pocketbase.url", "http://127.0.0.1:8090")
             manager.set("app.debug", False)
             manager.set("custom.my_key", "my_value")
 
