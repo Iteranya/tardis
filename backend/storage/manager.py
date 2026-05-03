@@ -2,6 +2,7 @@ import os
 import re
 from typing import Optional, List
 from pocketbase import PocketBase
+from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
 from backend.util.secrets import SecretsManager
 
@@ -10,10 +11,9 @@ class StorageManager:
     """
     Aina-chan's Storage Manager! (◕‿◕✿)
 
-    Fully self-contained module for the 'storage' collection.
-    Tracks metadata of all files and media uploaded to Anita-CMS.
-
-    This can be deleted without breaking anything else!
+    Manages the actual file storage in PocketBase.
+    Handles uploading, downloading, and metadata for any file type.
+    This module is self-contained and can be deleted without breaking others!
     """
 
     COLLECTION_NAME = "sys_storage"
@@ -29,12 +29,14 @@ class StorageManager:
             "updateRule": "@request.auth.id != ''",
             "deleteRule": None,
             "indexes": [
-                "CREATE UNIQUE INDEX `idx_storage_slug` ON `storage` (`slug`)",
-                "CREATE INDEX `idx_storage_folder` ON `storage` (`folder`)",
-                "CREATE INDEX `idx_storage_mime` ON `storage` (`mime_type`)",
-                "CREATE INDEX `idx_storage_public` ON `storage` (`is_public`)",
+                f"CREATE UNIQUE INDEX idx_{self.COLLECTION_NAME}_slug ON {self.COLLECTION_NAME} (slug)",
+                f"CREATE INDEX idx_{self.COLLECTION_NAME}_folder ON {self.COLLECTION_NAME} (folder)",
+                f"CREATE INDEX idx_{self.COLLECTION_NAME}_mime ON {self.COLLECTION_NAME} (mime_type)",
+                f"CREATE INDEX idx_{self.COLLECTION_NAME}_public ON {self.COLLECTION_NAME} (is_public)",
             ],
             "fields": [
+                # ✅ The actual file – PocketBase will store and serve it
+                {"name": "file", "type": "file", "required": False, "maxSelect": 1, "maxSize": 104_857_600, "mimeTypes": []},
                 {"name": "name", "type": "text", "required": True, "min": 1, "max": 255},
                 {"name": "slug", "type": "text", "required": True, "min": 1, "max": 255, "pattern": "^[a-zA-Z0-9_\\-\\.\\/]+$"},
                 {"name": "mime_type", "type": "text", "required": True, "max": 100},
@@ -56,7 +58,7 @@ class StorageManager:
             ],
         }
 
-    # ─── Initialization ───────────────────────────────────────
+    # ─── Initialization ──────────────────────────────────────────
 
     def __init__(self, pb_url=None, admin_email=None, admin_password=None):
         self._secrets = SecretsManager()
@@ -87,6 +89,7 @@ class StorageManager:
             return False
 
     def ensure_collection_exists(self) -> bool:
+        """Create the collection if it doesn't exist yet."""
         if not self._is_authenticated:
             if not self.authenticate_admin():
                 return False
@@ -98,9 +101,7 @@ class StorageManager:
                 return True
             except Exception as e:
                 error_msg = str(e)
-                # If the error is just SDK parsing (CollectionField 'help'), that's fine!
                 if "CollectionField.__init__()" in error_msg and "help" in error_msg:
-                    # Collection exists! SDK just can't parse the response.
                     return True
 
             # Try to create it
@@ -118,7 +119,6 @@ class StorageManager:
                         if name_error.get('code') == 'validation_collection_name_exists':
                             return True
 
-            # Check for SDK parsing errors
             error_msg = str(e)
             if "CollectionField.__init__()" in error_msg and "help" in error_msg:
                 return True
@@ -126,28 +126,118 @@ class StorageManager:
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False
 
+    # ─── File Upload ─────────────────────────────────────────────
 
+    def upload_file(self, file_path: str, metadata: Optional[dict] = None) -> Optional[dict]:
+        """
+        Upload a file and create a storage record.
 
-    # ─── CRUD ─────────────────────────────────────────────────
+        Args:
+            file_path: Path to the file on disk.
+            metadata: Additional fields (name, alt_text, folder, etc.).
+                     If name is not provided, the filename will be used.
+
+        Returns:
+            The created record dictionary, or None on failure.
+        """
+        if not os.path.isfile(file_path):
+            print(f"Aina-chan can't find the file: {file_path} (╥﹏╥)")
+            return None
+
+        filename = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+
+        # Determine MIME type from file extension (basic guess)
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        # Build data dict
+        data = metadata or {}
+        data.setdefault("name", filename)
+        data.setdefault("mime_type", mime_type)
+        data.setdefault("size", file_size)
+        if "slug" not in data:
+            data["slug"] = self.generate_unique_slug(filename, data.get("folder", ""))
+
+        # Read file as FileUpload
+        try:
+            with open(file_path, "rb") as f:
+                file_upload = FileUpload(
+                    filename=filename,
+                    data=f.read(),
+                    content_type=mime_type,
+                )
+            data["file"] = file_upload
+            return self.client.collection(self.COLLECTION_NAME).create(data)
+        except Exception as e:
+            print(f"Aina-chan couldn't upload the file! Error: {e} (╥﹏╥)")
+            return None
+
+    def upload_file_from_bytes(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        metadata: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """
+        Upload a file from raw bytes.
+
+        Args:
+            file_bytes: The file content.
+            filename: Original filename (used for MIME type).
+            metadata: Additional fields (name, alt_text, folder, etc.).
+
+        Returns:
+            The created record dictionary, or None on failure.
+        """
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(filename)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        data = metadata or {}
+        data.setdefault("name", filename)
+        data.setdefault("mime_type", mime_type)
+        data.setdefault("size", len(file_bytes))
+        if "slug" not in data:
+            data["slug"] = self.generate_unique_slug(filename, data.get("folder", ""))
+
+        try:
+            file_upload = FileUpload(
+                filename=filename,
+                data=file_bytes,
+                content_type=mime_type,
+            )
+            data["file"] = file_upload
+            return self.client.collection(self.COLLECTION_NAME).create(data)
+        except Exception as e:
+            print(f"Aina-chan couldn't upload the file from bytes! Error: {e} (╥﹏╥)")
+            return None
+
+    # ─── CRUD ─────────────────────────────────────────────────────
 
     def create_record(self, data: dict) -> Optional[dict]:
-        """Create a new storage metadata record."""
+        """
+        Create a new storage metadata record without a file.
+        (Use upload_file or upload_file_from_bytes for file uploads.)
+        """
         try:
-            return self.client.collections.create(self.COLLECTION_NAME, data)
+            return self.client.collection(self.COLLECTION_NAME).create(data)
         except Exception as e:
             print(f"Aina-chan couldn't create storage record! Error: {e} (╥﹏╥)")
             return None
 
     def get_record(self, record_id: str) -> Optional[dict]:
         try:
-            return self.client.collections.get_one(self.COLLECTION_NAME, record_id)
+            return self.client.collection(self.COLLECTION_NAME).get_one(record_id)
         except Exception:
             return None
 
     def get_record_by_slug(self, slug: str) -> Optional[dict]:
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
             items = result.get("items", [])
@@ -157,20 +247,20 @@ class StorageManager:
 
     def update_record(self, record_id: str, data: dict) -> Optional[dict]:
         try:
-            return self.client.collections.update(self.COLLECTION_NAME, record_id, data)
+            return self.client.collection(self.COLLECTION_NAME).update(record_id, data)
         except Exception as e:
             print(f"Aina-chan couldn't update storage record! Error: {e} (╥﹏╥)")
             return None
 
     def delete_record(self, record_id: str) -> bool:
         try:
-            self.client.collections.delete(self.COLLECTION_NAME, record_id)
+            self.client.collection(self.COLLECTION_NAME).delete(record_id)
             return True
         except Exception as e:
             print(f"Aina-chan couldn't delete storage record! Error: {e} (╥﹏╥)")
             return False
 
-    # ─── Listing with Filters ─────────────────────────────────
+    # ─── Listing with Filters ────────────────────────────────────
 
     def list_records(
         self,
@@ -211,17 +301,16 @@ class StorageManager:
             params = {"page": page, "perPage": per_page, "sort": sort}
             if filter_str:
                 params["filter"] = filter_str
-            return self.client.collections.get_list(self.COLLECTION_NAME, query_params=params)
+            return self.client.collection(self.COLLECTION_NAME).get_list(query_params=params)
         except Exception as e:
             print(f"Aina-chan couldn't list storage records! Error: {e} (╥﹏╥)")
             return {"items": [], "page": page, "perPage": per_page, "totalItems": 0, "totalPages": 0}
 
-    # ─── Slug Utilities ───────────────────────────────────────
+    # ─── Slug Utilities ─────────────────────────────────────────
 
     def slug_exists(self, slug: str, exclude_id: Optional[str] = None) -> bool:
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
             items = result.get("items", [])
@@ -234,7 +323,7 @@ class StorageManager:
             return False
 
     def generate_slug(self, filename: str, folder: str = "") -> str:
-        """Generate a unique storage slug from filename."""
+        """Generate a storage slug from filename."""
         base, ext = os.path.splitext(filename)
         base = base.lower()
         base = re.sub(r'[^a-z0-9_\-]', '-', base)
@@ -252,13 +341,12 @@ class StorageManager:
             counter += 1
         return slug
 
-    # ─── Folder Operations ────────────────────────────────────
+    # ─── Folder Operations ───────────────────────────────────────
 
     def list_folders(self) -> List[str]:
         """Get a list of all unique folder paths used in storage."""
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"perPage": 500, "fields": "folder"},
             )
             folders = set()
@@ -279,26 +367,26 @@ class StorageManager:
         """Get all records within a specific folder."""
         return self.list_records(page=page, per_page=per_page, folder=folder)
 
-    # ─── MIME Type Helpers ────────────────────────────────────
+    # ─── MIME Type Helpers ───────────────────────────────────────
 
     @staticmethod
     def get_mime_category(mime_type: str) -> str:
         """Get the broad category of a MIME type."""
-        if mime_type.startswith("image/"): 
+        if mime_type.startswith("image/"):
             return "image"
-        if mime_type.startswith("video/"): 
+        if mime_type.startswith("video/"):
             return "video"
-        if mime_type.startswith("audio/"): 
+        if mime_type.startswith("audio/"):
             return "audio"
-        if mime_type.startswith("text/"): 
+        if mime_type.startswith("text/"):
             return "document"
-        if mime_type == "application/pdf": 
+        if mime_type == "application/pdf":
             return "document"
-        if "spreadsheet" in mime_type: 
+        if "spreadsheet" in mime_type:
             return "document"
-        if "presentation" in mime_type: 
+        if "presentation" in mime_type:
             return "document"
-        if "zip" in mime_type or "rar" in mime_type or "tar" in mime_type: 
+        if "zip" in mime_type or "rar" in mime_type or "tar" in mime_type:
             return "archive"
         return "other"
 
@@ -320,7 +408,7 @@ class StorageManager:
                      "application/vnd.openxmlformats-officedocument"]
         return any(mime_type.startswith(t) for t in doc_types)
 
-    # ─── Stats ─────────────────────────────────────────────────
+    # ─── Stats ────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
         """Get storage statistics, grouped by MIME category."""
@@ -330,11 +418,11 @@ class StorageManager:
         video_count = 0
         audio_count = 0
         document_count = 0
+        archive_count = 0
         other_count = 0
 
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"perPage": 500, "fields": "mime_type,size"},
             )
             for item in result.get("items", []):
@@ -342,15 +430,17 @@ class StorageManager:
                 total_size += item.get("size", 0)
                 mime = item.get("mime_type", "")
                 cat = self.get_mime_category(mime)
-                if cat == "image": 
+                if cat == "image":
                     image_count += 1
-                elif cat == "video": 
+                elif cat == "video":
                     video_count += 1
-                elif cat == "audio": 
+                elif cat == "audio":
                     audio_count += 1
-                elif cat == "document": 
+                elif cat == "document":
                     document_count += 1
-                else: 
+                elif cat == "archive":
+                    archive_count += 1
+                else:
                     other_count += 1
         except Exception:
             pass
@@ -363,5 +453,23 @@ class StorageManager:
             "videos": video_count,
             "audio": audio_count,
             "documents": document_count,
+            "archives": archive_count,
             "other": other_count,
         }
+
+    # ─── File Download / URL ─────────────────────────────────────
+
+    def get_file_url(self, record_id: str) -> Optional[str]:
+        """
+        Get the public URL for a stored file.
+        Returns None if the record doesn't exist or has no file.
+        """
+        record = self.get_record(record_id)
+        if not record:
+            return None
+        file_field = record.get("file", "")
+        if not file_field:
+            return None
+        # PocketBase serves files at /api/files/{collection}/{id}/{filename}
+        # The "file" field contains the filename
+        return f"{self.pb_url}/api/files/{self.COLLECTION_NAME}/{record_id}/{file_field}"

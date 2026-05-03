@@ -1,4 +1,5 @@
 from typing import Optional, List
+from fastapi import UploadFile
 from backend.storage.manager import StorageManager
 from backend.storage.schema import (
     StorageCreate,
@@ -13,19 +14,66 @@ class StorageService:
     Aina-chan's Business Logic Layer for Storage! (◕‿◕✿)
 
     Handles validation, slug generation, and file metadata workflows.
+    Now with actual file upload support!
     """
 
     def __init__(self):
         self.manager = StorageManager()
 
-    # ─── Lifecycle ────────────────────────────────────────────
+    # ─── Lifecycle ──────────────────────────────────────────────────
 
     def initialize(self) -> bool:
         return self.manager.ensure_collection_exists()
 
-    # ─── CRUD with Business Logic ─────────────────────────────
+    # ─── File Uploads ───────────────────────────────────────────────
+
+    async def upload_file(
+        self,
+        file: UploadFile,
+        folder: Optional[str] = None,
+        alt_text: Optional[str] = None,
+        caption: Optional[str] = None,
+        is_public: bool = False,
+        labels: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        uploaded_by: Optional[str] = None,
+    ) -> StorageResponse:
+        """
+        Upload a file from a FastAPI UploadFile.
+        Builds metadata and calls the manager.
+        """
+        # Read file bytes
+        file_bytes = await file.read()
+        filename = file.filename or "unnamed"
+
+        # Build metadata dict
+        metadata = {
+            "alt_text": alt_text,
+            "caption": caption,
+            "folder": folder,
+            "is_public": is_public,
+            "labels": labels or [],
+            "tags": tags or [],
+            "uploaded_by": uploaded_by,
+        }
+        # Remove None values
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+
+        # Delegate to manager
+        result = self.manager.upload_file_from_bytes(
+            file_bytes=file_bytes,
+            filename=filename,
+            metadata=metadata,
+        )
+        if not result:
+            raise RuntimeError("Aina-chan couldn't upload the file~ (╥﹏╥)")
+
+        return StorageResponse(**result)
+
+    # ─── CRUD with Business Logic ───────────────────────────────────
 
     def create_record(self, data: StorageCreate) -> Optional[StorageResponse]:
+        """Create a metadata-only storage record (no file attached)."""
         # Check slug uniqueness
         if self.manager.slug_exists(data.slug):
             raise ValueError(
@@ -33,8 +81,6 @@ class StorageService:
                 f"Aina-chan can't have duplicates~ (╥﹏╥)"
             )
 
-        # Auto-detect dimensions for images if not provided
-        # (In a real scenario, you'd parse the file here)
         result = self.manager.create_record(data.model_dump(exclude_unset=True))
         if not result:
             raise RuntimeError("Aina-chan couldn't create the storage record~")
@@ -76,7 +122,7 @@ class StorageService:
             raise ValueError(f"Storage record '{record_id}' not found~")
         return self.manager.delete_record(record_id)
 
-    # ─── Listing ──────────────────────────────────────────────
+    # ─── Listing ────────────────────────────────────────────────────
 
     def list_records(
         self,
@@ -113,7 +159,7 @@ class StorageService:
             "total_pages": result.get("totalPages", 0),
         }
 
-    # ─── Folder Operations ────────────────────────────────────
+    # ─── Folder Operations ─────────────────────────────────────────
 
     def list_folders(self) -> List[str]:
         return self.manager.list_folders()
@@ -121,12 +167,12 @@ class StorageService:
     def get_folder_contents(self, folder: str, page: int = 1, per_page: int = 50) -> dict:
         return self.list_records(page=page, per_page=per_page, folder=folder)
 
-    # ─── Slug Generation ──────────────────────────────────────
+    # ─── Slug Generation ────────────────────────────────────────────
 
     def suggest_slug(self, filename: str, folder: str = "") -> str:
         return self.manager.generate_unique_slug(filename, folder)
 
-    # ─── Stats ────────────────────────────────────────────────
+    # ─── Stats ──────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
         return self.manager.get_stats()

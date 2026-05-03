@@ -1,5 +1,5 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from backend.storage.service import StorageService
 from backend.storage.schema import (
     StorageCreate,
@@ -24,6 +24,79 @@ def get_service() -> StorageService:
         )
     return service
 
+
+# ─── File Upload ─────────────────────────────────────────────────────
+
+@router.post("/upload", response_model=StorageResponse, status_code=201)
+async def upload_file(
+    file: UploadFile = File(..., description="The file to upload (any type, up to 100MB)"),
+    folder: Optional[str] = Form(None, description="Optional folder path"),
+    alt_text: Optional[str] = Form(None, description="Alt text for accessibility"),
+    caption: Optional[str] = Form(None, description="Caption for the file"),
+    is_public: bool = Form(False, description="Whether the file is publicly accessible"),
+    labels: Optional[str] = Form(None, description="JSON array of labels"),
+    tags: Optional[str] = Form(None, description="JSON array of tags"),
+    uploaded_by: Optional[str] = Form(None, description="Who uploaded the file"),
+    service: StorageService = Depends(get_service),
+):
+    """
+    Upload a file (any type) to storage.
+    Metadata can be provided as form fields.
+    """
+    # Parse JSON fields if provided
+    parsed_labels = None
+    parsed_tags = None
+    if labels:
+        import json
+        try:
+            parsed_labels = json.loads(labels)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="labels must be a valid JSON array")
+    if tags:
+        import json
+        try:
+            parsed_tags = json.loads(tags)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="tags must be a valid JSON array")
+
+    try:
+        result = await service.upload_file(
+            file=file,
+            folder=folder,
+            alt_text=alt_text,
+            caption=caption,
+            is_public=is_public,
+            labels=parsed_labels,
+            tags=parsed_tags,
+            uploaded_by=uploaded_by,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Metadata-Only Record Creation ──────────────────────────────────
+
+@router.post("", response_model=StorageResponse, status_code=201)
+async def create_storage_record(
+    data: StorageCreate,
+    service: StorageService = Depends(get_service),
+):
+    """
+    Create a storage *metadata* record without an actual file.
+    Useful for referencing external files or creating placeholders.
+    """
+    try:
+        return service.create_record(data)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Existing Routes (unchanged) ────────────────────────────────────
 
 @router.get("", response_model=StorageSummaryListResponse)
 async def list_storage(
@@ -57,20 +130,6 @@ async def list_storage(
         search=search,
         uploaded_by=uploaded_by,
     )
-
-
-@router.post("", response_model=StorageResponse, status_code=201)
-async def create_storage_record(
-    data: StorageCreate,
-    service: StorageService = Depends(get_service),
-):
-    """Create a new storage/media metadata record."""
-    try:
-        return service.create_record(data)
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/stats")

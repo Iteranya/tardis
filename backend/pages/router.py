@@ -164,36 +164,3 @@ async def disable_page(
         return service.update_page(page_id, PageUpdate(enabled=False))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-
-
-@router.post("/{page_id}/thumbnail", response_model=PageResponse)
-async def upload_thumbnail(
-    page_id: str,
-    file: UploadFile = File(...),
-    service: PageService = Depends(get_service),
-):
-    """Upload a thumbnail image for a page."""
-    allowed = ["image/jpeg", "image/png", "image/webp"]
-    if file.content_type not in allowed:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Aina-chan only accepts JPEG, PNG, or WebP! "
-                   f"Got '{file.content_type}'~ (╥﹏╥)",
-        )
-    suffix = os.path.splitext(file.filename or "upload.jpg")[1]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        result = service.manager.upload_thumbnail(page_id, tmp_path)
-        if not result:
-            raise HTTPException(
-                status_code=500,
-                detail="Aina-chan couldn't upload the thumbnail~",
-            )
-        return PageResponse(**result)
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)

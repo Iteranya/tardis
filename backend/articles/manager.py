@@ -1,8 +1,6 @@
-import os
 import re
 from typing import Optional
 from pocketbase import PocketBase
-from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
 from backend.util.secrets import SecretsManager
 
@@ -17,7 +15,7 @@ class ArticleManager:
 
     COLLECTION_NAME = "sys_articles"
 
-    # ─── Collection Schema ────────────────────────────────────
+    # ─── Collection Schema ───────────────────────────────────────
     # Self-contained! No external schema dependencies!
 
     @property
@@ -32,8 +30,8 @@ class ArticleManager:
             "updateRule": "@request.auth.id != ''",
             "deleteRule": None,
             "indexes": [
-                "CREATE UNIQUE INDEX `idx_articles_slug` ON `articles` (`slug`)",
-                "CREATE INDEX `idx_articles_enabled_sort` ON `articles` (`enabled`, `sort_order`)",
+                f"CREATE UNIQUE INDEX idx_{self.COLLECTION_NAME}_slug ON {self.COLLECTION_NAME} (slug)",
+                f"CREATE INDEX idx_{self.COLLECTION_NAME}_enabled_sort ON {self.COLLECTION_NAME} (enabled, sort_order)",
             ],
             "fields": [
                 {"name": "title", "type": "text", "required": True, "min": 1, "max": 200},
@@ -42,7 +40,8 @@ class ArticleManager:
                 {"name": "author", "type": "text", "required": False, "max": 100},
                 {"name": "draft", "type": "editor", "required": False},
                 {"name": "release", "type": "editor", "required": False},
-                {"name": "thumb", "type": "file", "required": False, "maxSelect": 1, "maxSize": 5_242_880, "mimeTypes": ["image/jpeg", "image/png", "image/webp"]},
+                # ✅ Thumb is now a simple text field – just a URL
+                {"name": "thumb", "type": "text", "required": False, "max": 500},
                 {"name": "gallery", "type": "json", "required": False},
                 {"name": "labels", "type": "json", "required": False},
                 {"name": "tags", "type": "json", "required": False},
@@ -54,7 +53,7 @@ class ArticleManager:
             ],
         }
 
-    # ─── Initialization ───────────────────────────────────────
+    # ─── Initialization ──────────────────────────────────────────
 
     def __init__(self, pb_url=None, admin_email=None, admin_password=None):
         self._secrets = SecretsManager()
@@ -83,7 +82,9 @@ class ArticleManager:
             print(f"Aina-chan couldn't authenticate! Error: {e} (╥﹏╥)")
             self._is_authenticated = False
             return False
+
     def ensure_collection_exists(self) -> bool:
+        """Create the collection if it doesn't exist yet."""
         if not self._is_authenticated:
             if not self.authenticate_admin():
                 return False
@@ -123,26 +124,24 @@ class ArticleManager:
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False
 
-
-    # ─── CRUD ─────────────────────────────────────────────────
+    # ─── CRUD ─────────────────────────────────────────────────────
 
     def create_article(self, data: dict) -> Optional[dict]:
         try:
-            return self.client.collections.create(self.COLLECTION_NAME, data)
+            return self.client.collection(self.COLLECTION_NAME).create(data)
         except Exception as e:
             print(f"Aina-chan couldn't create the article! Error: {e} (╥﹏╥)")
             return None
 
     def get_article(self, article_id: str) -> Optional[dict]:
         try:
-            return self.client.collections.get_one(self.COLLECTION_NAME, article_id)
+            return self.client.collection(self.COLLECTION_NAME).get_one(article_id)
         except Exception:
             return None
 
     def get_article_by_slug(self, slug: str) -> Optional[dict]:
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
             items = result.get("items", [])
@@ -152,20 +151,20 @@ class ArticleManager:
 
     def update_article(self, article_id: str, data: dict) -> Optional[dict]:
         try:
-            return self.client.collections.update(self.COLLECTION_NAME, article_id, data)
+            return self.client.collection(self.COLLECTION_NAME).update(article_id, data)
         except Exception as e:
             print(f"Aina-chan couldn't update the article! Error: {e} (╥﹏╥)")
             return None
 
     def delete_article(self, article_id: str) -> bool:
         try:
-            self.client.collections.delete(self.COLLECTION_NAME, article_id)
+            self.client.collection(self.COLLECTION_NAME).delete(article_id)
             return True
         except Exception as e:
             print(f"Aina-chan couldn't delete the article! Error: {e} (╥﹏╥)")
             return False
 
-    # ─── Listing with Filters ─────────────────────────────────
+    # ─── Listing with Filters ────────────────────────────────────
 
     def list_articles(
         self,
@@ -196,12 +195,12 @@ class ArticleManager:
             params = {"page": page, "perPage": per_page, "sort": sort}
             if filter_str:
                 params["filter"] = filter_str
-            return self.client.collections.get_list(self.COLLECTION_NAME, query_params=params)
+            return self.client.collection(self.COLLECTION_NAME).get_list(query_params=params)
         except Exception as e:
             print(f"Aina-chan couldn't list articles! Error: {e} (╥﹏╥)")
             return {"items": [], "page": page, "perPage": per_page, "totalItems": 0, "totalPages": 0}
 
-    # ─── Publishing Workflow ──────────────────────────────────
+    # ─── Publishing Workflow ─────────────────────────────────────
 
     def publish_article(self, article_id: str, promote_draft: bool = True) -> Optional[dict]:
         article = self.get_article(article_id)
@@ -219,12 +218,11 @@ class ArticleManager:
     def unpublish_article(self, article_id: str) -> Optional[dict]:
         return self.update_article(article_id, {"enabled": False})
 
-    # ─── Slug Utilities ───────────────────────────────────────
+    # ─── Slug Utilities ─────────────────────────────────────────
 
     def slug_exists(self, slug: str, exclude_id: Optional[str] = None) -> bool:
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
             items = result.get("items", [])
@@ -252,36 +250,18 @@ class ArticleManager:
             counter += 1
         return slug
 
-    # ─── File Uploads ─────────────────────────────────────────
-
-    def upload_thumbnail(self, article_id: str, file_path: str) -> Optional[dict]:
-        try:
-            with open(file_path, "rb") as f:
-                file_upload = FileUpload(
-                    filename=os.path.basename(file_path),
-                    data=f.read(),
-                    content_type="image/jpeg",
-                )
-            return self.client.collections.update(
-                self.COLLECTION_NAME, article_id, {"thumb": file_upload}
-            )
-        except Exception as e:
-            print(f"Aina-chan couldn't upload thumbnail! Error: {e} (╥﹏╥)")
-            return None
-
-    # ─── Stats ─────────────────────────────────────────────────
+    # ─── Stats ────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
         total = 0
         published = 0
         try:
-            total_result = self.client.collections.get_list(
-                self.COLLECTION_NAME, query_params={"perPage": 1}
+            total_result = self.client.collection(self.COLLECTION_NAME).get_list(
+                query_params={"perPage": 1}
             )
             total = total_result.get("totalItems", 0)
 
-            published_result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            published_result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"perPage": 1, "filter": "enabled = true"},
             )
             published = published_result.get("totalItems", 0)

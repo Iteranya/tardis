@@ -1,8 +1,6 @@
-import os
 import re
 from typing import Optional
 from pocketbase import PocketBase
-from pocketbase.client import FileUpload
 from backend.util.auth import authenticate_admin
 from backend.util.secrets import SecretsManager
 
@@ -17,7 +15,7 @@ class PageManager:
 
     COLLECTION_NAME = "sys_pages"
 
-    # ─── Collection Schema ────────────────────────────────────
+    # ─── Collection Schema ───────────────────────────────────────
     # Defined right here! No external dependencies!
 
     @property
@@ -31,15 +29,16 @@ class PageManager:
             "updateRule": "@request.auth.id != ''",
             "deleteRule": None,
             "indexes": [
-                "CREATE UNIQUE INDEX `idx_pages_slug` ON `pages` (`slug`)",
-                "CREATE INDEX `idx_pages_enabled_sort` ON `pages` (`enabled`, `sort_order`)",
+                f"CREATE UNIQUE INDEX idx_{self.COLLECTION_NAME}_slug ON {self.COLLECTION_NAME} (slug)",
+                f"CREATE INDEX idx_{self.COLLECTION_NAME}_enabled_sort ON {self.COLLECTION_NAME} (enabled, sort_order)",
             ],
             "fields": [
                 {"name": "title", "type": "text", "required": True, "min": 1, "max": 200},
                 {"name": "slug", "type": "text", "required": True, "min": 1, "max": 200, "pattern": "^[a-z0-9\\-]+$"},
                 {"name": "desc", "type": "text", "required": False, "max": 500},
                 {"name": "content_id", "type": "text", "required": False},
-                {"name": "thumb", "type": "file", "required": False, "maxSelect": 1, "maxSize": 5_242_880, "mimeTypes": ["image/jpeg", "image/png", "image/webp"]},
+                # ✅ Thumb is now a simple text field – just a URL
+                {"name": "thumb", "type": "text", "required": False, "max": 500},
                 {"name": "labels", "type": "json", "required": False},
                 {"name": "tags", "type": "json", "required": False},
                 {"name": "enabled", "type": "bool", "required": False},
@@ -50,7 +49,7 @@ class PageManager:
             ],
         }
 
-    # ─── Initialization ───────────────────────────────────────
+    # ─── Initialization ──────────────────────────────────────────
 
     def __init__(self, pb_url=None, admin_email=None, admin_password=None):
         self._secrets = SecretsManager()
@@ -81,6 +80,7 @@ class PageManager:
             return False
 
     def ensure_collection_exists(self) -> bool:
+        """Create the collection if it doesn't exist yet."""
         if not self._is_authenticated:
             if not self.authenticate_admin():
                 return False
@@ -120,27 +120,24 @@ class PageManager:
             print(f"Aina-chan encountered an error! {e} (╥﹏╥)")
             return False
 
-
-
-    # ─── CRUD ─────────────────────────────────────────────────
+    # ─── CRUD ─────────────────────────────────────────────────────
 
     def create_page(self, data: dict) -> Optional[dict]:
         try:
-            return self.client.collections.create(self.COLLECTION_NAME, data)
+            return self.client.collection(self.COLLECTION_NAME).create(data)
         except Exception as e:
             print(f"Aina-chan couldn't create the page! Error: {e} (╥﹏╥)")
             return None
 
     def get_page(self, page_id: str) -> Optional[dict]:
         try:
-            return self.client.collections.get_one(self.COLLECTION_NAME, page_id)
+            return self.client.collection(self.COLLECTION_NAME).get_one(page_id)
         except Exception:
             return None
 
     def get_page_by_slug(self, slug: str) -> Optional[dict]:
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
             items = result.get("items", [])
@@ -150,20 +147,20 @@ class PageManager:
 
     def update_page(self, page_id: str, data: dict) -> Optional[dict]:
         try:
-            return self.client.collections.update(self.COLLECTION_NAME, page_id, data)
+            return self.client.collection(self.COLLECTION_NAME).update(page_id, data)
         except Exception as e:
             print(f"Aina-chan couldn't update the page! Error: {e} (╥﹏╥)")
             return None
 
     def delete_page(self, page_id: str) -> bool:
         try:
-            self.client.collections.delete(self.COLLECTION_NAME, page_id)
+            self.client.collection(self.COLLECTION_NAME).delete(page_id)
             return True
         except Exception as e:
             print(f"Aina-chan couldn't delete the page! Error: {e} (╥﹏╥)")
             return False
 
-    # ─── Listing with Filters ─────────────────────────────────
+    # ─── Listing with Filters ────────────────────────────────────
 
     def list_pages(
         self,
@@ -191,17 +188,16 @@ class PageManager:
             params = {"page": page, "perPage": per_page, "sort": sort}
             if filter_str:
                 params["filter"] = filter_str
-            return self.client.collections.get_list(self.COLLECTION_NAME, query_params=params)
+            return self.client.collection(self.COLLECTION_NAME).get_list(query_params=params)
         except Exception as e:
             print(f"Aina-chan couldn't list pages! Error: {e} (╥﹏╥)")
             return {"items": [], "page": page, "perPage": per_page, "totalItems": 0, "totalPages": 0}
 
-    # ─── Slug Utilities ───────────────────────────────────────
+    # ─── Slug Utilities ─────────────────────────────────────────
 
     def slug_exists(self, slug: str, exclude_id: Optional[str] = None) -> bool:
         try:
-            result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"filter": f'slug = "{slug}"', "limit": 1},
             )
             items = result.get("items", [])
@@ -229,36 +225,18 @@ class PageManager:
             counter += 1
         return slug
 
-    # ─── File Uploads ─────────────────────────────────────────
-
-    def upload_thumbnail(self, page_id: str, file_path: str) -> Optional[dict]:
-        try:
-            with open(file_path, "rb") as f:
-                file_upload = FileUpload(
-                    filename=os.path.basename(file_path),
-                    data=f.read(),
-                    content_type="image/jpeg",
-                )
-            return self.client.collections.update(
-                self.COLLECTION_NAME, page_id, {"thumb": file_upload}
-            )
-        except Exception as e:
-            print(f"Aina-chan couldn't upload thumbnail! Error: {e} (╥﹏╥)")
-            return None
-
-    # ─── Stats ─────────────────────────────────────────────────
+    # ─── Stats ────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
         total = 0
         published = 0
         try:
-            total_result = self.client.collections.get_list(
-                self.COLLECTION_NAME, query_params={"perPage": 1}
+            total_result = self.client.collection(self.COLLECTION_NAME).get_list(
+                query_params={"perPage": 1}
             )
             total = total_result.get("totalItems", 0)
 
-            published_result = self.client.collections.get_list(
-                self.COLLECTION_NAME,
+            published_result = self.client.collection(self.COLLECTION_NAME).get_list(
                 query_params={"perPage": 1, "filter": "enabled = true"},
             )
             published = published_result.get("totalItems", 0)
