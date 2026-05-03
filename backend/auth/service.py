@@ -11,23 +11,25 @@ from backend.auth.schema import (
     MeResponse,
     UserResponse,
 )
+from backend.util.verification import VerifyIdentity
+from backend.util.initializer import initialize_all_modules
 
 
 class AuthService:
     """
-    Aina-chan's Auth Service! (◕‿◕✿)
-
     Business logic layer for authentication and setup.
+    Now uses VerifyIdentity directly for token checking.
     """
 
     def __init__(self):
         self.manager = AuthManager()
+        # Verifier is created as needed or can be shared.
+        self.verifier = VerifyIdentity()
 
-    # ─── Setup ───
+    # ─── Setup ──────────────────────────────────────────────────
 
     def test_connection(self, url: str) -> TestConnectionResponse:
         """Test if PocketBase is reachable."""
-        # Temporarily override the URL for testing
         original_url = self.manager.pb_url
         self.manager.pb_url = url
         try:
@@ -95,11 +97,11 @@ class AuthService:
         token = auth_data.get("token", "")
         user = auth_data.get("record", superuser)
 
-        # Step 6: Initialize all collections
+        # Step 6: Initialize all collections (using the global initializer)
         try:
-            self._initialize_collections(token)
+            initialize_all_modules()
+            # We could log the results, but we'll just catch exceptions
         except Exception as e:
-            # Non-fatal — collections can be created later
             print(f"⚠️ Collection initialization warning: {e}")
 
         # Step 7: Create initial site page (optional, non-fatal)
@@ -121,32 +123,6 @@ class AuthService:
             user={"id": user.get("id", ""), "email": user.get("email", ""), "is_superuser": True},
             message="Anita-CMS has been initialized successfully!",
         )
-
-    def _initialize_collections(self, token: str) -> None:
-        """Initialize all system collections."""
-        # Import here to avoid circular imports during module loading
-        from backend.pages.service import PageService
-        from backend.articles.service import ArticleService
-        from backend.sites.service import SiteService
-        from backend.collections.service import CollectionService
-        from backend.storage.service import StorageService
-        from backend.users.service import UserService
-
-        services = [
-            ("Pages", PageService()),
-            ("Articles", ArticleService()),
-            ("Sites", SiteService()),
-            ("Collections", CollectionService()),
-            ("Storage", StorageService()),
-            ("Users", UserService()),
-        ]
-
-        for name, service in services:
-            try:
-                service.initialize()
-                print(f"  ✅ {name} collection initialized")
-            except Exception as e:
-                print(f"  ⚠️ {name} initialization skipped: {e}")
 
     def _create_initial_site(self, token: str, site_name: str, site_url: str) -> None:
         """Create an initial home page for the site."""
@@ -183,7 +159,7 @@ class AuthService:
             timeout=10,
         )
 
-    # ─── Login ───
+    # ─── Login ──────────────────────────────────────────────────
 
     def login(self, data: LoginRequest) -> Optional[LoginResponse]:
         """Try to authenticate a user. Checks superuser first, then regular user."""
@@ -211,7 +187,7 @@ class AuthService:
 
         return None
 
-    # ─── Register ───
+    # ─── Register ────────────────────────────────────────────────
 
     def register(self, data: RegisterRequest) -> Optional[RegisterResponse]:
         """Register a new user."""
@@ -238,11 +214,13 @@ class AuthService:
                 message = str(e)
             raise ValueError(message)
 
-    # ─── Me ───
+    # ─── Me ──────────────────────────────────────────────────────
 
     def get_me(self, token: str) -> Optional[MeResponse]:
-        """Get current user info from token."""
-        user = self.manager.get_user_by_token(token)
+        """Get current user info from token using VerifyIdentity directly."""
+        # Update verifier's pb_url in case it changed during setup
+        self.verifier.pb_url = self.manager.pb_url
+        user = self.verifier.verify_token(token)
         if not user:
             return None
 
@@ -256,5 +234,5 @@ class AuthService:
                 created=user.get("created", ""),
                 updated=user.get("updated", ""),
             ),
-            is_superuser=user.get("is_superuser", False),
+            is_superuser=user.get("_collection") == "_superusers",
         )

@@ -14,6 +14,7 @@ from backend.auth.schema import (
     MeResponse,
     ValidateCredentialsRequest,
 )
+from backend.util.dependencies import AuthDependency
 from backend.util.initializer import initialize_all_modules
 from backend.util.secrets import SecretsManager
 
@@ -219,7 +220,7 @@ async def register(
 @api_router.get("/auth/me", response_model=MeResponse)
 async def get_me(
     authorization: str = Header(None),
-    service: AuthService = Depends(get_service),
+    user = Depends(AuthDependency()),
 ):
     """Get the currently authenticated user's info."""
     if not authorization:
@@ -229,7 +230,7 @@ async def get_me(
     if not token:
         raise HTTPException(status_code=401, detail="Invalid token.")
 
-    result = service.get_me(token)
+    result = user
     if not result:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 

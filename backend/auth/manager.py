@@ -5,23 +5,18 @@ from backend.util.secrets import SecretsManager
 
 class AuthManager:
     """
-    Aina-chan's Auth Manager! (◕‿◕✿)
+    Low-level PocketBase API caller for authentication operations.
 
-    Handles direct PocketBase operations for authentication
-    and setup. Uses httpx to avoid Python SDK parsing issues.
+    - test_connection / check_superuser_exists  → setup
+    - login_superuser / login_user              → authentication
+    - register_user                             → user creation
     """
 
     def __init__(self, pb_url: Optional[str] = None):
         self._secrets = SecretsManager()
-        self.pb_url = pb_url or self._secrets.pocketbase_url
+        self.pb_url = (pb_url or self._secrets.pocketbase_url).rstrip('/')
 
-    def _headers(self, token: Optional[str] = None) -> dict:
-        headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        return headers
-
-    # ─── Connection ───
+    # ─── Connection ─────────────────────────────────────────────
 
     def test_connection(self) -> dict:
         """Check if PocketBase is reachable and return version info."""
@@ -30,10 +25,9 @@ class AuthManager:
             response.raise_for_status()
             data = response.json()
 
-            # Try to get version from API settings
             try:
                 api_settings = httpx.get(f"{self.pb_url}/api/settings", timeout=5)
-                if api_settings.ok:
+                if api_settings.is_success:
                     return {
                         "ok": True,
                         "version": api_settings.json().get("app", {}).get("version", "unknown"),
@@ -44,9 +38,9 @@ class AuthManager:
             return {"ok": True, "version": data.get("version", "unknown")}
 
         except httpx.ConnectError:
-            return {"ok": False, "version": None, "message": "Cannot connect to PocketBase. Make sure it's running."}
+            return {"ok": False, "version": None, "message": "Cannot connect to PocketBase."}
         except httpx.TimeoutException:
-            return {"ok": False, "version": None, "message": "Connection timed out. Check the URL and firewall."}
+            return {"ok": False, "version": None, "message": "Connection timed out."}
         except Exception as e:
             return {"ok": False, "version": None, "message": str(e)}
 
@@ -58,18 +52,17 @@ class AuthManager:
                 params={"perPage": 1},
                 timeout=5,
             )
-            if response.ok:
+            if response.is_success:
                 data = response.json()
                 return data.get("totalItems", 0) > 0
             return False
         except Exception:
             return False
 
-    # ─── Superuser Management ───
-
+    # ─── Login ──────────────────────────────────────────────────
 
     def login_superuser(self, email: str, password: str) -> dict:
-        """Authenticate as a superuser."""
+        """Authenticate as a superuser and return token + record."""
         response = httpx.post(
             f"{self.pb_url}/api/collections/_superusers/auth-with-password",
             json={"identity": email, "password": password},
@@ -78,10 +71,8 @@ class AuthManager:
         response.raise_for_status()
         return response.json()
 
-    # ─── Regular User Management ───
-
     def login_user(self, email: str, password: str) -> dict:
-        """Authenticate as a regular user."""
+        """Authenticate as a regular user and return token + record."""
         response = httpx.post(
             f"{self.pb_url}/api/collections/users/auth-with-password",
             json={"identity": email, "password": password},
@@ -89,6 +80,8 @@ class AuthManager:
         )
         response.raise_for_status()
         return response.json()
+
+    # ─── Registration ──────────────────────────────────────────
 
     def register_user(self, username: str, email: str, password: str) -> dict:
         """Register a new user account."""
@@ -104,77 +97,3 @@ class AuthManager:
         )
         response.raise_for_status()
         return response.json()
-
-    def get_user_by_token(self, token: str) -> Optional[dict]:
-        """Get user info from a JWT token (works for both superusers and regular users)."""
-        headers = self._headers(token)
-
-        # Try superuser first
-        try:
-            response = httpx.get(
-                f"{self.pb_url}/api/collections/_superusers/records",
-                headers=headers,
-                params={"perPage": 1},
-                timeout=5,
-            )
-            if response.ok:
-                data = response.json()
-                items = data.get("items", [])
-                if items:
-                    user = items[0]
-                    user["is_superuser"] = True
-                    return user
-        except Exception:
-            pass
-
-        # Try regular user
-        try:
-            response = httpx.get(
-                f"{self.pb_url}/api/collections/users/records",
-                headers=headers,
-                params={"perPage": 1},
-                timeout=5,
-            )
-            if response.ok:
-                data = response.json()
-                items = data.get("items", [])
-                if items:
-                    user = items[0]
-                    user["is_superuser"] = False
-                    return user
-        except Exception:
-            pass
-
-        return None
-
-    # ─── Token Refresh ───
-
-    def refresh_token(self, token: str) -> Optional[dict]:
-        """Refresh an auth token."""
-        headers = self._headers(token)
-
-        # Try superuser
-        try:
-            response = httpx.post(
-                f"{self.pb_url}/api/collections/_superusers/auth-refresh",
-                headers=headers,
-                timeout=5,
-            )
-            if response.ok:
-                return response.json()
-        except Exception:
-            pass
-
-        # Try regular user
-        try:
-            response = httpx.post(
-                f"{self.pb_url}/api/collections/users/auth-refresh",
-                headers=headers,
-                timeout=5,
-            )
-            if response.ok:
-                return response.json()
-        except Exception:
-            pass
-
-        return None
