@@ -50,7 +50,7 @@ def _ensure_credentials():
 
     if web_setup:
         print("🌐 Web setup mode — credentials will be configured via browser")
-        print("   Visit http://localhost:8000/auth/setup to get started!")
+        print("   Visit http://127.0.0.1:8000/auth/setup to get started!")
         return secrets
 
     # Terminal prompt (for local development)

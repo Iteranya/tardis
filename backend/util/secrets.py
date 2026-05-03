@@ -193,7 +193,7 @@ class SecretsManager:
         Set a value by its dot-notation key.
 
         Examples:
-            manager.set("pocketbase.url", "http://localhost:8090")
+            manager.set("pocketbase.url", "http://127.0.0.1:8090")
             manager.set("app.debug", False)
             manager.set("custom.my_key", "my_value")
 

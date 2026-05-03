@@ -59,7 +59,7 @@
                            type="url"
                            x-model="pocketbase.url"
                            @input="connectionTested = false"
-                           placeholder="http://localhost:8090"
+                           placeholder="http://127.0.0.1:8090"
                            required
                            class="block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none transition pl-10"
                            :class="{ 'border-green-500 ring-1 ring-green-500': connectionTested && connectionOk,
